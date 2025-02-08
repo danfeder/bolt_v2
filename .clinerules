@@ -1,0 +1,70 @@
+# Cline Rules: Gym Class Rotation Scheduler
+
+## Project Patterns
+
+### Code Organization
+- React components in src/components/
+- Core business logic in src/lib/
+- State management in src/store/
+- TypeScript types in src/types/
+- Memory Bank documentation in memory-bank/
+
+### Naming Conventions
+- React components: PascalCase
+- TypeScript interfaces: PascalCase
+- Functions/variables: camelCase
+- Files: camelCase.ts(x)
+- Constants: UPPER_SNAKE_CASE
+
+### Component Structure
+- Functional components with hooks
+- Props interface defined above component
+- Local state at top of component
+- Effects after state
+- Helper functions before return
+- JSX with Tailwind classes
+
+### State Management
+- Use Zustand for global state
+- Component state for UI-only concerns
+- Immutable state updates
+- TypeScript for type safety
+
+### Algorithm Patterns
+- Backtracking with constraint satisfaction
+- Cache optimization for performance
+- Progress tracking for long operations
+- Comprehensive validation
+
+### Error Handling
+- Clear error messages
+- User-friendly display
+- Debug panel information
+- Validation at multiple levels
+
+### File Operations
+- CSV import support
+- JSON data structures
+- Local state persistence
+- Type-safe data handling
+
+## Development Workflow
+1. Read Memory Bank for context
+2. Make focused, atomic changes
+3. Update documentation
+4. Test functionality
+5. Commit changes
+
+## Key Insights
+- Complex scheduling requires careful constraint management
+- Performance optimization is critical for large datasets
+- Clear error messages help users resolve issues
+- Debug panel aids development and troubleshooting
+- Test data helps verify functionality
+
+## Project Intelligence
+- Scheduling algorithm is sensitive to constraint order
+- UI components follow a consistent pattern
+- State updates must maintain type safety
+- File operations need error handling
+- Performance depends on caching strategy
