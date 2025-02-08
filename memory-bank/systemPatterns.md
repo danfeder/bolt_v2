@@ -23,7 +23,10 @@ flowchart TD
     end
     
     subgraph Scheduler
-        BacktrackingScheduler
+        subgraph "CP-SAT Solvers"
+            StableV1[Stable v1]
+            DevVersion[Development]
+        end
     end
 ```
 
@@ -35,16 +38,29 @@ flowchart TD
 - **Purpose**: Manage application state, schedule generation, and data persistence
 - **Benefits**: Simplified state updates, predictable data flow
 
-### 2. Scheduling Algorithm
-- **Pattern**: Backtracking with constraint satisfaction
-- **Implementation**: `BacktrackingScheduler` class
+### 2. Development Workflow
+- **Pattern**: Two-Version Development
+- **Implementation**: 
+  - Stable Version: `or-tools-cp.ts`
+  - Development Version: `or-tools-cp-dev.ts`
 - **Key Features**:
-  - Performance optimization through caching
-  - Preference-based slot scoring
-  - Comprehensive constraint validation
-  - Progress tracking
+  - Clear separation of concerns
+  - Safe feature development
+  - Easy comparison testing
+  - Reliable fallback option
 
-### 3. Component Architecture
+### 3. Scheduling Algorithm
+- **Pattern**: CP-SAT solver with hierarchical constraints
+- **Implementation**: OR-Tools CP-SAT
+- **Key Features**:
+  - Required periods enforcement
+  - Teacher availability handling
+  - Efficient constraint satisfaction
+  - Multi-objective optimization
+  - Performance monitoring
+  - Comprehensive validation
+
+### 4. Component Architecture
 - **Pattern**: Functional components with hooks
 - **Structure**:
   ```
@@ -55,15 +71,17 @@ flowchart TD
   └── types/        # TypeScript definitions
   ```
 
-### 4. Data Models
+### 5. Data Models
 - **Pattern**: TypeScript interfaces for type safety
 - **Core Types**:
   - TimeSlot
-  - WeeklySchedule
+  - WeeklySchedule (with required periods)
   - Class
-  - TeacherAvailability
+  - TeacherAvailability (with timezone handling)
   - ScheduleAssignment
   - ScheduleConstraints
+  - RequiredPeriod
+  - UnavailableSlot
 
 ## Technical Decisions
 
@@ -82,32 +100,50 @@ flowchart TD
   - Good performance
 
 ### 3. Scheduling Implementation
-- **Approach**: Backtracking algorithm
+- **Approach**: CP-SAT solver with hierarchical constraints
 - **Benefits**:
-  - Handles complex constraints
-  - Optimizes for preferences
-  - Provides progress feedback
-  - Supports validation
+  - Required periods prioritization
+  - Teacher availability respect
+  - Efficient constraint solving
+  - Safe feature development
+  - Easy testing and validation
+  - Performance optimization
+- **Workflow**:
+  - Stable version with all features
+  - Development version for new features
+  - Thorough testing before promotion
+  - Clear validation criteria
+- **Constraint Hierarchy**:
+  1. Required periods (highest priority)
+  2. Teacher availability
+  3. Basic scheduling rules
+  4. Optimization preferences
 
 ### 4. Data Validation
 - **Strategy**: Multi-level validation
   - Type checking with TypeScript
+  - Required periods validation
+  - Teacher availability verification
   - Runtime constraint validation
   - Schedule verification
   - User input validation
+  - Timezone consistency checks
 
 ## Performance Patterns
 
-### 1. Caching
+### 1. Optimization
+- Required periods prioritization
+- Teacher availability tracking
 - Valid time slot caching
 - Daily/weekly assignment count tracking
 - Date string memoization
+- Timezone-aware date handling
 
-### 2. Optimization Strategies
-- Class ordering by constraint complexity
-- Randomized slot selection
-- Progress tracking with throttling
-- Early constraint validation
+### 2. Development Strategies
+- Feature isolation in development version
+- Comprehensive testing before promotion
+- Performance comparison with stable version
+- Clear validation requirements
 
 ## Error Handling
 - Comprehensive error messages

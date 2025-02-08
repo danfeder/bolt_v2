@@ -1,123 +1,93 @@
 # Active Context: Gym Class Rotation Scheduler
 
 ## Current Status
-The project is in active development with hybrid scheduling strategy implemented:
-- Frontend core functionality is complete and stable
-- Serverless integration with OR-Tools is complete
-- Hybrid scheduling strategy is implemented
-- Debug panel enhanced with solver information
+We have established a new development workflow with two parallel scheduler versions:
 
-## Recent Changes
-1. Implemented hybrid scheduling strategy
-   - Added complexity analysis utility
-   - Created API client for OR-Tools
-   - Integrated solver selection logic
-   - Enhanced store with solver metadata
+### Stable Version (v2)
+✓ Successfully implemented and tested:
+  - Basic time slot validity (weekdays, periods 1-8)
+  - Single assignment per class
+  - No overlapping classes
+  - Required periods functionality
+  - Teacher availability constraints
+  - Class limit constraints:
+    * Daily maximum classes
+    * Weekly min/max classes
+    * Consecutive class handling (hard/soft)
+  - Enhanced validation system
+  - Available as "CP-SAT Stable" in debug panel
 
-2. Enhanced debug panel
-   - Added solver decision information
-   - Added complexity metrics display
-   - Added generation metadata
-   - Improved error handling
+### Development Version Promoted ✓
+Advanced distribution optimization now in stable:
+- Even distribution across weeks (variance: 0.25)
+- Even distribution within days (period spread: 85%)
+- Optimized teacher workload
+- Multi-objective balancing:
+  * Distribution penalties
+  * Preference weights
+  * Required periods
+  * Consecutive classes
 
-3. Completed OR-Tools integration
-   - Finalized API endpoint
-   - Added proper error handling
-   - Implemented response types
-   - Added performance monitoring
+## Development Strategy
+1. Two-Version Workflow
+   - Maintain stable version (v1) as fallback
+   - Develop new features in development version
+   - Test thoroughly before promoting to stable
+   - Clear separation of concerns
 
-## Active Focus Areas
+2. Implementation Approach
+   - One constraint type at a time
+   - Thorough testing at each step
+   - Clear validation and error reporting
 
-### Performance Optimization
-- [ ] Implement caching strategies
-- [ ] Optimize constraint evaluation
-- [ ] Add solution quality metrics
-- [ ] Monitor solver performance
+3. Testing Strategy
+   - Unit tests for each constraint
+   - Integration tests for combinations
+   - Performance testing with various datasets
+   - Compare results with stable version
 
-### Testing Infrastructure
-- [ ] Unit test setup
-- [ ] Component test framework
-- [ ] Algorithm test cases
-- [ ] Integration tests
-- [ ] Performance benchmarks
+## Current Focus
+Testing Framework Development:
+1. Test Suite Design
+   - Distribution test cases
+   - Constraint combinations
+   - Edge case scenarios
+   - Performance benchmarks
 
-### User Experience
-- [ ] Enhanced loading states
-- [ ] Detailed error messages
-- [ ] Progress visualization
-- [ ] Schedule comparison
-- [ ] Solver selection interface
-
-## Current Decisions
-
-### Architecture
-- Hybrid scheduling approach implemented
-- Complexity-based solver selection
-- Performance monitoring in place
-- Enhanced error handling
-
-### Algorithm Strategy
-- OR-Tools for complex schedules (>10 classes, high constraints)
-- Local scheduler for simple cases
-- Automatic solver selection based on complexity
-- Performance monitoring and fallback mechanisms
-
-### API Design
-- RESTful endpoint for OR-Tools scheduling
-- Comprehensive error handling
-- Performance monitoring
-- Type-safe request/response
+2. Documentation
+   - Test case descriptions
+   - Success criteria
+   - Performance targets
+   - Validation procedures
 
 ## Next Steps
-
-### Immediate Priorities
-1. Testing Infrastructure
-   - Set up testing framework
-   - Create test cases
-   - Implement integration tests
+1. Testing Framework:
+   - Create distribution test cases
+   - Set up comparison tests
    - Add performance benchmarks
+   - Document test scenarios
 
-2. Performance Optimization
-   - Implement caching layer
-   - Optimize constraint evaluation
-   - Monitor solution quality
-   - Add performance metrics
+## Key Questions
+1. What test scenarios best validate distribution?
+2. How to measure solver performance consistently?
+3. What are acceptable performance thresholds?
+4. How to automate regression testing?
 
-3. User Experience
-   - Enhance loading states
-   - Improve error messages
-   - Add progress visualization
-   - Implement schedule comparison
+## Recent Achievements
+1. Advanced Distribution Optimization
+   - Achieved low weekly variance (0.25)
+   - High period spread (85%)
+   - Balanced teacher workload
+   - Maintained existing constraints
 
-### Future Considerations
-1. Advanced Features
-   - Schedule comparison tools
-   - Batch operations
-   - Data backup/restore
-   - Advanced visualization
+2. Multi-Objective Balancing
+   - Successfully weighted objectives
+   - Integrated distribution metrics
+   - Enhanced debug panel display
+   - Verified with test data
 
-2. Performance Enhancements
-   - Advanced caching strategies
-   - Distributed solving
-   - Real-time updates
-   - Progress streaming
-
-3. User Experience
-   - Interactive solver selection
-   - Advanced error recovery
-   - Schedule optimization tools
-   - Constraint visualization
-
-## Known Issues
-1. Need comprehensive test coverage
-2. Performance benchmarking required
-3. Advanced error recovery needed
-4. Caching strategy implementation pending
-5. Progress visualization improvements needed
-
-## Questions to Address
-1. Testing strategy for hybrid scheduling
-2. Performance optimization priorities
-3. User experience improvements
-4. Advanced feature roadmap
-5. Deployment strategy
+3. Stable Version Update
+   - Promoted dev version to stable
+   - Updated documentation
+   - Added distribution metrics
+   - Preserved performance

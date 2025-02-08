@@ -3,10 +3,16 @@
 ## Development Environment
 
 ### Core Technologies
-- **Node.js**: Runtime environment
-- **TypeScript**: Programming language
-- **React**: UI framework
-- **Vite**: Build tool and dev server
+- **Frontend**:
+  - **Node.js**: Runtime environment
+  - **TypeScript**: Programming language
+  - **React**: UI framework
+  - **Vite**: Build tool and dev server
+- **Backend**:
+  - **Python 3.11**: Runtime environment (required for OR-Tools)
+  - **FastAPI**: Web framework
+  - **OR-Tools**: Constraint programming solver
+  - **Pydantic**: Data validation
 
 ### Key Dependencies
 ```json
@@ -69,12 +75,18 @@
 ## Development Setup
 
 ### Prerequisites
-- Node.js (LTS version)
-- npm/yarn package manager
-- Modern web browser
-- Code editor with TypeScript support
+- **Frontend**:
+  - Node.js (LTS version)
+  - npm/yarn package manager
+  - Modern web browser
+  - Code editor with TypeScript support
+- **Backend**:
+  - Python 3.11 (required for OR-Tools compatibility)
+  - Homebrew (recommended for Python installation)
+  - Virtual environment for Python dependencies
 
 ### Build Scripts
+#### Frontend
 ```json
 {
   "dev": "vite",              // Development server
@@ -82,6 +94,24 @@
   "lint": "eslint .",         // Code linting
   "preview": "vite preview"   // Preview build
 }
+```
+
+#### Backend
+```bash
+# Create virtual environment
+/opt/homebrew/bin/python3.11 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run development server
+uvicorn app.main:app --reload
+
+# Run tests
+python -m app.test_class_limits
 ```
 
 ## Technical Constraints

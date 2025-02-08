@@ -16,21 +16,20 @@ interface ScheduleRequest {
 
 interface ScheduleResponse {
   assignments: ScheduleAssignment[];
-  metadata: {
-    solver: 'or-tools' | 'backtracking';
-    duration: number;
-    score: number;
-  };
+  metadata: import('../types').ScheduleMetadata;  // Use the shared type definition
 }
 
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? '/api'  // Production URL
-  : 'http://localhost:3000/api';  // Development URL
+const SCHEDULER_URL = import.meta.env.PROD 
+  ? '/api'  // Production URL (will update with Render URL)
+  : 'http://localhost:8000';  // FastAPI development URL
+
+type SchedulerVersion = 'stable' | 'dev';  // Match Python backend versions
 
 export async function generateScheduleWithOrTools(
   classes: Class[],
   teacherAvailability: TeacherAvailability[],
-  constraints: ScheduleConstraints
+  constraints: ScheduleConstraints,
+  version: SchedulerVersion = 'stable'
 ): Promise<{ assignments: ScheduleAssignment[]; metadata: ScheduleResponse['metadata'] }> {
   const request: ScheduleRequest = {
     classes,
@@ -47,7 +46,10 @@ export async function generateScheduleWithOrTools(
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}/schedule`, {
+    const url = new URL(`${SCHEDULER_URL}/schedule`);
+    url.searchParams.set('version', version);
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -57,7 +59,7 @@ export async function generateScheduleWithOrTools(
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || 'Failed to generate schedule');
+      throw new Error(error.detail || error.message || 'Failed to generate schedule');
     }
 
     const data: ScheduleResponse = await response.json();
