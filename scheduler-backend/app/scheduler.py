@@ -370,8 +370,30 @@ def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
         # Solve
         solver = cp_model.CpSolver()
         print("\nStarting solver...")
-        status = solver.Solve(model)
-        print(f"Solver finished with status: {status}")
+        
+        # Add logging callback
+        class SolutionCallback(cp_model.CpSolverSolutionCallback):
+            def __init__(self):
+                cp_model.CpSolverSolutionCallback.__init__(self)
+                self._solutions = 0
+                self._start_time = time.time()
+                
+            def on_solution_callback(self):
+                current_time = time.time()
+                self._solutions += 1
+                print(f"\nFound solution {self._solutions} at {current_time - self._start_time:.2f}s")
+                print(f"Current objective value: {self.ObjectiveValue()}")
+                
+                if self._solutions % 10 == 0:  # Print more details every 10 solutions
+                    print("Current distribution metrics:")
+                    assigned_count = sum(1 for var in variables if self.BooleanValue(var["variable"]))
+                    print(f"- Classes assigned: {assigned_count}/{len(request.classes)}")
+        
+        callback = SolutionCallback()
+        solver.parameters.log_search_progress = True
+        print("Solver parameters configured for verbose output")
+        status = solver.Solve(model, callback)
+        print(f"\nSolver finished with status: {status}")
         
         if status != cp_model.OPTIMAL and status != cp_model.FEASIBLE:
             raise Exception(f"No solution found. Solver status: {status}")
@@ -597,8 +619,55 @@ def create_schedule_dev(request: ScheduleRequest) -> ScheduleResponse:
         # Solve
         solver = cp_model.CpSolver()
         print("\nStarting solver...")
-        status = solver.Solve(model)
-        print(f"Solver finished with status: {status}")
+        
+        # Add logging callback
+        class SolutionCallback(cp_model.CpSolverSolutionCallback):
+            def __init__(self):
+                cp_model.CpSolverSolutionCallback.__init__(self)
+                self._solutions = 0
+                self._start_time = time.time()
+                self._last_log_time = time.time()
+                self._last_log_count = 0
+                
+            def on_solution_callback(self):
+                current_time = time.time()
+                self._solutions += 1
+                print(f"\nFound solution {self._solutions} at {current_time - self._start_time:.2f}s")
+                print(f"Current objective value: {self.ObjectiveValue()}")
+                
+                # Log distribution metrics with every solution
+                assigned_count = sum(1 for var in variables if self.BooleanValue(var["variable"]))
+                print(f"Classes assigned: {assigned_count}/{len(request.classes)}")
+                
+                # Print week distribution
+                week_counts = defaultdict(int)
+                for var in variables:
+                    if self.BooleanValue(var["variable"]):
+                        week_num = (var["date"] - parser.parse(request.startDate).replace(tzinfo=UTC)).days // 7
+                        week_counts[week_num] += 1
+                print("Week distribution:", dict(week_counts))
+                
+                # Print active search info every 3 seconds
+                if current_time - self._last_log_time >= 3.0:
+                    elapsed = current_time - self._start_time
+                    solutions_since_last = self._solutions - self._last_log_count
+                    rate = solutions_since_last / (current_time - self._last_log_time)
+                    print(f"\nSearch status at {elapsed:.1f}s:")
+                    print(f"- Solutions found: {self._solutions} ({rate:.1f} solutions/sec)")
+                    print(f"- Best objective: {self.BestObjectiveBound()}")
+                    print(f"- Current bound: {self.ObjectiveValue()}")
+                    print(f"- Gap: {(self.ObjectiveValue() - self.BestObjectiveBound()) / abs(self.ObjectiveValue()):.2%}")
+                    self._last_log_time = current_time
+                    self._last_log_count = self._solutions
+        
+        callback = SolutionCallback()
+        solver.parameters.log_search_progress = True
+        solver.parameters.log_subsolver_statistics = True  # Add subsolver stats
+        solver.parameters.num_search_workers = 8  # Use multiple threads
+        solver.parameters.max_time_in_seconds = 300.0  # Set 5-minute timeout
+        print("Solver parameters configured for maximum verbosity and distribution optimization")
+        status = solver.Solve(model, callback)
+        print(f"\nSolver finished with status: {status}")
         
         if status != cp_model.OPTIMAL and status != cp_model.FEASIBLE:
             raise Exception(f"No solution found. Solver status: {status}")
@@ -690,20 +759,6 @@ def add_required_periods_constraints(
         if len(class_ids) > 1:
             print(f"Warning: Multiple classes require day {day} period {period}: {class_ids}")
     
-    # Group variables by week
-    by_week = {}  # week_num -> [(var, weekday, period)]
-    start_date = parser.parse(request.startDate)
-    if start_date.tzinfo is None:
-        start_date = start_date.replace(tzinfo=UTC)
-    
-    for var in variables:
-        week_num = (var["date"] - start_date).days // 7
-        if week_num not in by_week:
-            by_week[week_num] = []
-        weekday = var["date"].weekday() + 1
-        period = var["period"]
-        by_week[week_num].append((var, weekday, period))
-    
     for class_obj in request.classes:
         if not class_obj.weeklySchedule.requiredPeriods:
             continue
@@ -714,27 +769,20 @@ def add_required_periods_constraints(
             if var["classId"] == class_obj.id
         ]
         
-        # Create list of variables that represent required periods
+        # Find all variables that match required periods across all weeks
         required_vars = []
-        for week_num, week_vars in by_week.items():
-            # Find all variables for this class in this week that match required periods
-            week_required_vars = []
-            for var, weekday, period in week_vars:
-                if var["classId"] != class_obj.id:
-                    continue
-                    
-                # Check if this time slot is a required period
-                is_required = any(
-                    rp.dayOfWeek == weekday and rp.period == period
-                    for rp in class_obj.weeklySchedule.requiredPeriods
-                )
-                
-                if is_required:
-                    week_required_vars.append(var["variable"])
+        for var in class_vars:
+            weekday = var["date"].weekday() + 1
+            period = var["period"]
             
-            # If we found any required periods in this week, add them to the list
-            if week_required_vars:
-                required_vars.extend(week_required_vars)
+            # Check if this time slot is a required period
+            is_required = any(
+                rp.dayOfWeek == weekday and rp.period == period
+                for rp in class_obj.weeklySchedule.requiredPeriods
+            )
+            
+            if is_required:
+                required_vars.append(var["variable"])
         
         if not required_vars:
             raise Exception(
@@ -744,9 +792,10 @@ def add_required_periods_constraints(
                 "Consider adding more weeks to the schedule range or checking teacher availability."
             )
         
-        # Class must be scheduled in one of its required periods
+        # Class must be scheduled in one of its required periods (over any week)
         model.Add(sum(required_vars) == 1)
         required_count += 1
+        print(f"Class {class_obj.id} has {len(required_vars)} possible required periods across all weeks")
     
     print(f"Added required period constraints for {required_count} classes")
 
