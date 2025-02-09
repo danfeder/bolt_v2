@@ -7,7 +7,7 @@ from dateutil.tz import UTC
 import traceback
 from collections import defaultdict
 import statistics
-from typing import Dict, List, Tuple
+import math
 
 from .models import (
     ScheduleRequest,
@@ -220,14 +220,24 @@ def validate_schedule(assignments: List[ScheduleAssignment], request: ScheduleRe
             return False
     
     # Validate weekly class limits
+    sorted_weeks = sorted(assignments_by_week.keys())
+    last_week = sorted_weeks[-1] if sorted_weeks else 0
+    
     for week, week_assignments in assignments_by_week.items():
-        if len(week_assignments) > request.constraints.maxClassesPerWeek:
+        # Pro-rate limits for partial weeks
+        weekdays = sum(1 for assignment in week_assignments 
+                      if parser.parse(assignment.date).weekday() < 5)
+        prorated_min = math.floor((request.constraints.minPeriodsPerWeek * weekdays) / 5)
+        prorated_max = math.ceil((request.constraints.maxClassesPerWeek * weekdays) / 5)
+        
+        if len(week_assignments) > prorated_max:
             print(f"Error: {len(week_assignments)} classes scheduled in week {week}, "
-                  f"exceeds maximum of {request.constraints.maxClassesPerWeek}")
+                  f"exceeds prorated maximum of {prorated_max} (weekdays: {weekdays})")
             return False
-        if len(week_assignments) < request.constraints.minPeriodsPerWeek:
+            
+        if weekdays > 0 and week != last_week and len(week_assignments) < prorated_min:
             print(f"Error: Only {len(week_assignments)} classes scheduled in week {week}, "
-                  f"below minimum of {request.constraints.minPeriodsPerWeek}")
+                  f"below prorated minimum of {prorated_min} (weekdays: {weekdays})")
             return False
     
     # Validate consecutive class constraints
@@ -329,8 +339,16 @@ def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
         add_weekly_class_limits(model, variables, request)
         add_consecutive_class_constraints(model, variables, request)
         
-        # Add objective: heavily reward required period assignments, penalize consecutive classes if soft constraint
+        # Initialize distribution trackers
+        weekly_dist = WeeklyDistribution()
+        daily_dist = DailyDistribution()
+        
+        # Add objective terms for required periods and preferences
         objective_terms = create_required_periods_objective(model, variables, request)
+        
+        # Add distribution optimization terms
+        distribution_terms = create_distribution_objective(model, variables, request)
+        objective_terms.extend(distribution_terms)
         
         # Add consecutive class penalties to objective if using soft constraints
         if request.constraints.consecutiveClassesRule == "soft":
@@ -377,6 +395,8 @@ def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
                 cp_model.CpSolverSolutionCallback.__init__(self)
                 self._solutions = 0
                 self._start_time = time.time()
+                self._last_log_time = time.time()
+                self._last_log_count = 0
                 
             def on_solution_callback(self):
                 current_time = time.time()
@@ -384,14 +404,37 @@ def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
                 print(f"\nFound solution {self._solutions} at {current_time - self._start_time:.2f}s")
                 print(f"Current objective value: {self.ObjectiveValue()}")
                 
-                if self._solutions % 10 == 0:  # Print more details every 10 solutions
-                    print("Current distribution metrics:")
-                    assigned_count = sum(1 for var in variables if self.BooleanValue(var["variable"]))
-                    print(f"- Classes assigned: {assigned_count}/{len(request.classes)}")
+                # Log distribution metrics with every solution
+                assigned_count = sum(1 for var in variables if self.BooleanValue(var["variable"]))
+                print(f"Classes assigned: {assigned_count}/{len(request.classes)}")
+                
+                # Print week distribution
+                week_counts = defaultdict(int)
+                for var in variables:
+                    if self.BooleanValue(var["variable"]):
+                        week_num = (var["date"] - parser.parse(request.startDate).replace(tzinfo=UTC)).days // 7
+                        week_counts[week_num] += 1
+                print("Week distribution:", dict(week_counts))
+                
+                # Print active search info every 3 seconds
+                if current_time - self._last_log_time >= 3.0:
+                    elapsed = current_time - self._start_time
+                    solutions_since_last = self._solutions - self._last_log_count
+                    rate = solutions_since_last / (current_time - self._last_log_time)
+                    print(f"\nSearch status at {elapsed:.1f}s:")
+                    print(f"- Solutions found: {self._solutions} ({rate:.1f} solutions/sec)")
+                    print(f"- Best objective: {self.BestObjectiveBound()}")
+                    print(f"- Current bound: {self.ObjectiveValue()}")
+                    print(f"- Gap: {(self.ObjectiveValue() - self.BestObjectiveBound()) / abs(self.ObjectiveValue()):.2%}")
+                    self._last_log_time = current_time
+                    self._last_log_count = self._solutions
         
         callback = SolutionCallback()
         solver.parameters.log_search_progress = True
-        print("Solver parameters configured for verbose output")
+        solver.parameters.log_subsolver_statistics = True  # Add subsolver stats
+        solver.parameters.num_search_workers = 8  # Use multiple threads
+        solver.parameters.max_time_in_seconds = 300.0  # Set 5-minute timeout
+        print("Solver parameters configured for maximum verbosity and distribution optimization")
         status = solver.Solve(model, callback)
         print(f"\nSolver finished with status: {status}")
         
@@ -407,16 +450,51 @@ def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
         if not validate_schedule(assignments, request):
             raise Exception("Schedule validation failed!")
         
-        # Calculate score
+        # Calculate scores and distribution metrics
         score = calculate_score_with_required_periods(assignments, request)
-        print(f"\nSchedule score: {score}")
+        
+        # Track distribution metrics
+        start_date = parser.parse(request.startDate)
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=UTC)
+            
+        for assignment in assignments:
+            date = parser.parse(assignment.date)
+            if date.tzinfo is None:
+                date = date.replace(tzinfo=UTC)
+            
+            # Track weekly distribution
+            week_num = (date - start_date).days // 7
+            weekly_dist.add_assignment(week_num)
+            
+            # Track daily distribution
+            class_obj = next(c for c in request.classes if c.id == assignment.classId)
+            daily_dist.add_assignment(
+                date.date().isoformat(),
+                assignment.timeSlot.period,
+                class_obj.id  # Using class ID as teacher ID for now
+            )
+        
+        # Get distribution summaries
+        weekly_summary = weekly_dist.get_summary()
+        daily_summary = daily_dist.get_summary()
+        
+        print(f"\nSchedule Score: {score}")
+        print("\nDistribution Summary:")
+        print(f"Weekly variance: {weekly_summary['variance']:.2f}")
+        print(f"Distribution score: {weekly_summary['score'] + daily_summary['score']}")
         
         return ScheduleResponse(
             assignments=assignments,
             metadata=ScheduleMetadata(
                 solver="cp-sat-stable",
                 duration=int((time.time() - start_time) * 1000),  # ms
-                score=score
+                score=score,
+                distribution={
+                    "weekly": weekly_summary,
+                    "daily": daily_summary,
+                    "totalScore": weekly_summary['score'] + daily_summary['score']
+                }
             )
         )
         
@@ -451,28 +529,91 @@ def add_weekly_class_limits(
     variables: List[Dict],
     request: ScheduleRequest
 ):
-    """Add constraints for weekly class limits"""
-    # Group variables by week
+    """Add constraints for weekly class limits with pro-rated values for partial weeks"""
+    # Group variables by week and calculate weekdays per week
     by_week = {}
+    weekdays_by_week = defaultdict(int)
+    start_date = parser.parse(request.startDate)
+    if start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=UTC)
+        
+    # Count remaining classes to schedule
+    total_classes = len(request.classes)
+    classes_scheduled = 0
+    
+    # First, group variables by week and count actual weekdays
+    seen_dates = set()  # Track unique dates
     for var in variables:
-        # Get week number relative to start date
-        start_date = parser.parse(request.startDate)
-        if start_date.tzinfo is None:
-            start_date = start_date.replace(tzinfo=UTC)
         week_num = (var["date"] - start_date).days // 7
+        date = var["date"].date()
+        
+        # Only count each weekday once
+        if date not in seen_dates and var["date"].weekday() < 5:
+            weekdays_by_week[week_num] += 1
+            seen_dates.add(date)
         
         if week_num not in by_week:
             by_week[week_num] = []
         by_week[week_num].append(var["variable"])
     
-    # For each week, ensure total classes is within limits
-    for week, vars_list in by_week.items():
-        # Maximum classes per week
-        model.Add(sum(vars_list) <= request.constraints.maxClassesPerWeek)
-        # Minimum periods per week
-        model.Add(sum(vars_list) >= request.constraints.minPeriodsPerWeek)
+    # Sort weeks to process them in order
+    sorted_weeks = sorted(by_week.keys())
+    first_week = sorted_weeks[0]
+    last_week = sorted_weeks[-1]
     
-    print(f"Added weekly class limit constraints (min {request.constraints.minPeriodsPerWeek}, max {request.constraints.maxClassesPerWeek} per week)")
+    for week in sorted_weeks:
+        vars_list = by_week[week]
+        weekdays = weekdays_by_week[week]
+        remaining_classes = total_classes - classes_scheduled
+        
+        # Calculate pro-rated default limits
+        prorated_min = math.floor((request.constraints.minPeriodsPerWeek * weekdays) / 5)
+        prorated_max = math.ceil((request.constraints.maxClassesPerWeek * weekdays) / 5)
+
+        # Calculate actual needed capacity for this week
+        if week == first_week:
+            # First week needs a proportional share of classes
+            target = math.ceil((weekdays / 5) * total_classes / len(sorted_weeks))
+            min_needed = min(target, remaining_classes)
+            print(f"First week target: {target} classes ({remaining_classes} remaining)")
+        elif week == last_week:
+            # Last week needs whatever is remaining
+            min_needed = remaining_classes if weekdays > 0 else 0
+            print(f"Last week needs: {min_needed} remaining classes")
+        else:
+            # Middle weeks aim for even distribution of remaining classes
+            weeks_left = len(sorted_weeks) - (sorted_weeks.index(week))
+            min_needed = math.ceil(remaining_classes / weeks_left)
+            print(f"Week {week} target: {min_needed} classes (of {remaining_classes} remaining over {weeks_left} weeks)")
+
+        # Adjust limits based on actual needs
+        if weekdays > 0:
+            min_slots_needed = math.ceil(min_needed / weekdays) * weekdays
+            if min_slots_needed > prorated_max:
+                print(f"Warning: Week {week} needs {min_slots_needed} slots but prorated max is {prorated_max}")
+                print(f"Adjusting week {week} max to {min_slots_needed} to accommodate classes")
+                prorated_max = min_slots_needed
+                
+        # Add constraints
+        model.Add(sum(vars_list) <= prorated_max)
+        print(f"Week {week} ({weekdays} days):")
+        print(f"- Max classes: {prorated_max}")
+        
+        # Add minimum constraint except for last week
+        if week != last_week and weekdays > 0:
+            min_constraint = max(prorated_min, min_needed) if week == first_week else min_needed
+            model.Add(sum(vars_list) >= min_constraint)
+            print(f"- Min classes: {min_constraint}")
+        
+        # Update classes scheduled based on constraint
+        if week == last_week:
+            classes_scheduled = total_classes  # All classes must be scheduled
+        else:
+            classes_scheduled += min_needed
+            
+        print(f"Classes scheduled through week {week}: {classes_scheduled} of {total_classes}\n")
+    
+    print(f"Added weekly class limits with pro-rated values for partial weeks")
 
 def add_consecutive_class_constraints(
     model: cp_model.CpModel,
@@ -968,10 +1109,26 @@ def create_schedule_variables(
     if end_date.tzinfo is None:
         end_date = end_date.replace(tzinfo=UTC)
     
+    # Calculate schedule dimensions
+    total_days = (end_date - start_date).days + 1
+    weekdays = 0
+    weekdays_by_week = defaultdict(int)
+    
+    print("\nAnalyzing scheduling window:")
+    print(f"Start date: {start_date.date()} ({['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][start_date.weekday()]})")
+    print(f"End date: {end_date.date()} ({['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][end_date.weekday()]})")
+    print(f"Total days: {total_days}")
+    
+    # Create variables and count weekdays
     current_date = start_date
     while current_date <= end_date:
+        week_num = (current_date - start_date).days // 7
+        
         # Only create variables for weekdays (1-5)
         if current_date.weekday() < 5:
+            weekdays += 1
+            weekdays_by_week[week_num] += 1
+            
             for class_obj in request.classes:
                 for period in range(1, 9):  # periods 1-8
                     var_name = f"class_{class_obj.id}_{current_date.date()}_{period}"
@@ -982,6 +1139,14 @@ def create_schedule_variables(
                         "period": period
                     })
         current_date += timedelta(days=1)
+    
+    # Print schedule dimensions
+    print(f"Available weekdays: {weekdays}")
+    print("Weekdays per week:", dict(weekdays_by_week))
+    max_slots = weekdays * 8  # 8 periods per day
+    print(f"Total scheduling slots: {max_slots}")
+    print(f"Classes to schedule: {len(request.classes)}")
+    print(f"Created {len(variables)} schedule variables\n")
     
     return variables
 
