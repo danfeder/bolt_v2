@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict, Any
 import traceback
 import time
 
@@ -11,6 +11,7 @@ from ..objectives.distribution import DistributionObjective
 
 from .base import BaseSolver
 from ...models import ScheduleRequest, ScheduleResponse
+from dateutil import parser
 
 class StableSolver(BaseSolver):
     """
@@ -31,10 +32,14 @@ class StableSolver(BaseSolver):
        - Preferred period assignments
        - Avoided period penalties
        - Earlier date preference
+    
+    Weights:
+    - RequiredPeriodsObjective: 1000 (highest priority for required/preferred periods)
+    - DistributionObjective: 500 (balancing schedule distribution)
     """
     
     def __init__(self):
-        super().__init__(name="cp-sat-stable")
+        super().__init__("cp-sat-stable")
         
         # Add constraints in order of priority
         self.add_constraint(SingleAssignmentConstraint())
@@ -43,9 +48,9 @@ class StableSolver(BaseSolver):
         self.add_constraint(RequiredPeriodsConstraint())
         self.add_constraint(ConflictPeriodsConstraint())
         
-        # Add objectives in order of priority
-        self.add_objective(RequiredPeriodsObjective())
-        self.add_objective(DistributionObjective())
+        # Add objectives with preset weights (defined in each objective class)
+        self.add_objective(RequiredPeriodsObjective())  # Uses weight=1000
+        self.add_objective(DistributionObjective())     # Uses weight=500
         
     def create_schedule(self, request: ScheduleRequest) -> ScheduleResponse:
         """Create a schedule using the stable solver configuration"""
@@ -59,22 +64,28 @@ class StableSolver(BaseSolver):
             print(f"- {objective.name} (weight: {objective.weight})")
             
         try:
+            # Validate dates
+            start_date = parser.parse(request.startDate)
+            end_date = parser.parse(request.endDate)
+            
             # Create schedule using base solver
             response = super().create_schedule(request)
             
-            # Validate constraints
+            # Validate solution
             print("\nValidating constraints...")
             all_violations = []
+            context = SchedulerContext(
+                model=None,  # Not needed for validation
+                solver=None,  # Not needed for validation
+                request=request,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
             for constraint in self.constraints:
                 violations = constraint.validate(
                     response.assignments,
-                    SchedulerContext(
-                        model=None,  # Not needed for validation
-                        solver=None,  # Not needed for validation
-                        request=request,
-                        start_date=None,  # Not needed for validation
-                        end_date=None  # Not needed for validation
-                    )
+                    context
                 )
                 if violations:
                     print(f"\nViolations for {constraint.name}:")

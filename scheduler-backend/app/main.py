@@ -1,5 +1,7 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from .models import ScheduleRequest, ScheduleResponse
 from .scheduling.solvers.stable import StableSolver
@@ -20,11 +22,36 @@ app.add_middleware(
 stable_solver = StableSolver()
 dev_solver = DevSolver()
 
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request: Request, exc: ValidationError):
+    """Handle Pydantic validation errors gracefully"""
+    errors = []
+    for error in exc.errors():
+        location = " -> ".join(str(loc) for loc in error["loc"])
+        errors.append({
+            "location": location,
+            "message": error["msg"],
+            "type": error["type"]
+        })
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation error",
+            "errors": errors
+        }
+    )
+
 @app.post("/schedule/stable")
 async def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
     """Create schedule using stable (production) solver"""
     try:
         return stable_solver.create_schedule(request)
+    except ValidationError as e:
+        # This should be caught by the global handler, but just in case
+        raise HTTPException(
+            status_code=422,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -36,6 +63,11 @@ async def create_schedule_dev(request: ScheduleRequest) -> ScheduleResponse:
     """Create schedule using development solver"""
     try:
         return dev_solver.create_schedule(request)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -59,6 +91,11 @@ async def compare_solvers(request: ScheduleRequest) -> dict:
             "dev": dev_response,
             "comparison": comparison
         }
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,

@@ -8,6 +8,7 @@ from ortools.sat.python import cp_model
 
 from .base import BaseObjective
 from ..core import SchedulerContext
+from ...models import ScheduleAssignment
 
 @dataclass
 class DistributionMetrics:
@@ -131,7 +132,7 @@ class DistributionObjective(BaseObjective):
     
     def calculate_metrics(
         self,
-        assignments: List[Dict[str, Any]],
+        assignments: List[ScheduleAssignment],
         context: SchedulerContext
     ) -> DistributionMetrics:
         """Calculate distribution metrics for assigned schedule"""
@@ -141,13 +142,16 @@ class DistributionObjective(BaseObjective):
         
         # Group assignments and calculate metrics
         for assignment in assignments:
-            date = assignment["date"]
-            period = assignment["timeSlot"]["period"]
-            class_id = assignment["classId"]
+            date = assignment.date  # Access as property, not dict key
+            period = assignment.timeSlot.period
+            class_id = assignment.classId
+            
+            # Parse dates consistently
+            assignment_date = parser.parse(date)
             
             # Weekly distribution
             week_num = (
-                context.start_date - assignment["date"]
+                assignment_date - context.start_date
             ).days // 7
             classes_per_week[week_num] += 1
             

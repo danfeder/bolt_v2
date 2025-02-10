@@ -7,8 +7,9 @@ import type {
   TeacherAvailability,
   ScheduleMetadata 
 } from '../types';
+import type { ComparisonResult } from './types';
 import { analyzeScheduleComplexity, type SolverDecision } from '../lib/scheduleComplexity';
-import { generateScheduleWithOrTools } from '../lib/apiClient';
+import { generateScheduleWithOrTools, compareScheduleSolvers } from '../lib/apiClient';
 
 interface ScheduleState {
   classes: Class[];
@@ -18,54 +19,20 @@ interface ScheduleState {
   isGenerating: boolean;
   generationProgress: number;
   solverDecision: SolverDecision | null;
-  schedulerVersion: 'stable' | 'dev';  // Updated to match Python backend versions
+  schedulerVersion: 'stable' | 'dev';
   lastGenerationMetadata: ScheduleMetadata | null;
+  comparisonResult: ComparisonResult | null;
+  isComparing: boolean;
+  error: string | null;
   setClasses: (classes: Class[]) => void;
   setTeacherAvailability: (availability: TeacherAvailability[] | ((prev: TeacherAvailability[]) => TeacherAvailability[])) => void;
   setConstraints: (constraints: Partial<ScheduleConstraints>) => void;
-  setSchedulerVersion: (version: 'stable' | 'dev') => void;  // Updated version type
+  setSchedulerVersion: (version: 'stable' | 'dev') => void;
   generateSchedule: () => Promise<void>;
+  compareVersions: () => Promise<void>;
   cancelGeneration: () => void;
+  clearError: () => void;
 }
-
-// Test metadata for development
-const testMetadata: ScheduleMetadata = {
-  solver: 'cp-sat-dev',
-  duration: 1250,
-  score: 15750,
-  distribution: {
-    weekly: {
-      variance: 0.75,
-      classesPerWeek: {
-        "0": 12,
-        "1": 13,
-        "2": 11,
-        "3": 14
-      },
-      score: -75
-    },
-    daily: {
-      byDate: {
-        "2025-02-10": {
-          periodSpread: 0.85,
-          teacherLoadVariance: 0.5,
-          classesByPeriod: {
-            "1": 1,
-            "2": 1,
-            "3": 2,
-            "4": 1,
-            "5": 0,
-            "6": 1,
-            "7": 0,
-            "8": 0
-          }
-        }
-      },
-      score: -425
-    },
-    totalScore: -500
-  }
-};
 
 const defaultConstraints: ScheduleConstraints = {
   maxClassesPerDay: 4,
@@ -89,7 +56,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
     generationProgress: 0,
     solverDecision: null,
     schedulerVersion: 'stable',
-    lastGenerationMetadata: testMetadata,  // Use test metadata for development
+    lastGenerationMetadata: null,
+    comparisonResult: null,
+    isComparing: false,
+    error: null,
     
     setClasses: (classes: Class[]) => set({ classes }),
     
@@ -111,12 +81,17 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
       const { classes, teacherAvailability, constraints, schedulerVersion } = get();
       
       if (classes.length === 0) {
-        throw new Error('No classes to schedule. Please add classes first.');
+        set({ error: 'No classes to schedule. Please add classes first.' });
+        return;
       }
 
       if (constraints.minPeriodsPerWeek > constraints.maxClassesPerWeek) {
-        throw new Error('Minimum periods per week cannot be greater than maximum classes per week.');
+        set({ error: 'Minimum periods per week cannot be greater than maximum classes per week.' });
+        return;
       }
+
+      // Clear any previous errors
+      set({ error: null });
 
       // Analyze schedule complexity and choose solver
       const decision = analyzeScheduleComplexity(classes, teacherAvailability, constraints);
@@ -137,10 +112,47 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
           assignments: result.assignments,
           lastGenerationMetadata: result.metadata,
           isGenerating: false,
-          generationProgress: 100
+          generationProgress: 100,
+          error: null
         });
       } catch (error) {
-        set({ isGenerating: false, generationProgress: 0 });
+        set({ 
+          isGenerating: false, 
+          generationProgress: 0,
+          error: error instanceof Error ? error.message : 'Failed to generate schedule'
+        });
+        throw error;
+      }
+    },
+
+    compareVersions: async () => {
+      const { classes, teacherAvailability, constraints } = get();
+      
+      if (classes.length === 0) {
+        set({ error: 'No classes to schedule. Please add classes first.' });
+        return;
+      }
+
+      // Clear any previous errors
+      set({ error: null, isComparing: true });
+
+      try {
+        const result = await compareScheduleSolvers(
+          classes,
+          teacherAvailability,
+          constraints
+        );
+
+        set({
+          comparisonResult: result,
+          isComparing: false,
+          error: null
+        });
+      } catch (error) {
+        set({ 
+          isComparing: false,
+          error: error instanceof Error ? error.message : 'Failed to compare solvers'
+        });
         throw error;
       }
     },
@@ -151,6 +163,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
         worker = null;
         set({ isGenerating: false, generationProgress: 0 });
       }
-    }
+    },
+
+    clearError: () => set({ error: null })
   };
 });
