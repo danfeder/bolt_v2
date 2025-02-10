@@ -14,7 +14,6 @@ from ...models import (
     ScheduleMetadata,
     DistributionMetrics
 )
-from dateutil import parser
 from dateutil.tz import UTC
 
 class BaseSolver:
@@ -55,8 +54,8 @@ class BaseSolver:
             solver.parameters.num_search_workers = 8
             
             # Parse dates
-            start_date = parser.parse(request.startDate)
-            end_date = parser.parse(request.endDate)
+            start_date = datetime.fromisoformat(request.startDate)
+            end_date = datetime.fromisoformat(request.endDate)
             if start_date.tzinfo is None:
                 start_date = start_date.replace(tzinfo=UTC)
             if end_date.tzinfo is None:
@@ -73,23 +72,77 @@ class BaseSolver:
             
             # Create variables
             self._create_variables(context)
-            print(f"Created {len(context.variables)} schedule variables")
+            print(f"\nCreated {len(context.variables)} schedule variables")
+            
+            # Log available slots per class
+            print("\nAvailable slots per class:")
+            by_class = {}
+            for var in context.variables:
+                class_id = var["classId"]
+                if class_id not in by_class:
+                    by_class[class_id] = []
+                by_class[class_id].append(var)
+            
+            for class_id, vars_list in by_class.items():
+                print(f"\nClass {class_id}:")
+                print(f"- Total available slots: {len(vars_list)}")
+                # Get class's conflicts
+                class_obj = next(c for c in request.classes if c.id == class_id)
+                print(f"- Conflict periods: {len(class_obj.weeklySchedule.conflicts)}")
+                # Group by day
+                by_day = {}
+                for var in vars_list:
+                    day = var["date"].strftime("%Y-%m-%d")
+                    if day not in by_day:
+                        by_day[day] = []
+                    by_day[day].append(var["period"])
+                for day, periods in by_day.items():
+                    print(f"  {day}: periods {sorted(periods)}")
             
             # Apply constraints
             for constraint in self.constraints:
-                print(f"Applying constraint: {constraint.name}")
+                print(f"\nApplying constraint: {constraint.name}")
                 constraint.apply(context)
             
             # Create objective function
             objective_terms = []
             for objective in self.objectives:
-                print(f"Adding objective: {objective.name} (weight: {objective.weight})")
+                print(f"\nAdding objective: {objective.name} (weight: {objective.weight})")
                 terms = objective.create_terms(context)
                 weighted_terms = [objective.weight * term for term in terms]
                 objective_terms.extend(weighted_terms)
                 
             if objective_terms:
                 context.model.Maximize(sum(objective_terms))
+            
+            # Add search heuristics
+            print("\nAdding search heuristics...")
+            
+            # Get all variables in a flat list
+            all_vars = [var["variable"] for var in context.variables]
+            
+            # Count conflicts per class to identify most constrained classes
+            conflicts_by_class = {}
+            for class_obj in context.request.classes:
+                conflicts_by_class[class_obj.id] = len(class_obj.weeklySchedule.conflicts)
+            
+            # Sort variables by number of conflicts (most constrained first)
+            sorted_vars = sorted(
+                context.variables,
+                key=lambda v: (-conflicts_by_class[v["classId"]], v["date"].toordinal(), v["period"])
+            )
+            sorted_var_list = [v["variable"] for v in sorted_vars]
+            
+            # Add decision strategy
+            print("Adding decision strategy:")
+            print("1. Try most constrained classes first")
+            print("2. Try earlier dates before later dates")
+            print("3. Try earlier periods before later periods")
+            context.model.AddDecisionStrategy(
+                sorted_var_list,
+                cp_model.CHOOSE_FIRST,  # Try variables in the order we sorted them
+                cp_model.SELECT_MIN_VALUE  # Try false (0) before true (1) to avoid unnecessary assignments
+            )
             
             # Create solution callback to track best solution
             callback = SolutionCallback(context)
@@ -192,21 +245,55 @@ class BaseSolver:
 
     def _create_variables(self, context: SchedulerContext) -> None:
         """Create CP-SAT variables for each possible assignment"""
+        print("\nCreating schedule variables...")
+        
+        # First count weekdays in range
+        current_date = context.start_date
+        weekdays = 0
+        while current_date <= context.end_date:
+            if current_date.weekday() < 5:  # Monday = 0, Friday = 4
+                weekdays += 1
+            current_date = current_date + timedelta(days=1)
+        
+        print(f"Schedule range: {context.start_date.date()} to {context.end_date.date()}")
+        print(f"Available weekdays: {weekdays}")
+        print(f"Total classes: {len(context.request.classes)}")
+        print(f"Periods per day: 8")
+        print(f"Maximum possible slots: {weekdays * 8}")
+        
+        # Create variables
         for class_obj in context.request.classes:
+            print(f"\nCreating variables for class {class_obj.id}:")
+            print(f"- Conflicts: {len(class_obj.weeklySchedule.conflicts)}")
+            
             current_date = context.start_date
+            class_vars = 0
             while current_date <= context.end_date:
-                # Only create variables for weekdays
+                # Only create variables for weekdays and non-conflicting periods
                 if current_date.weekday() < 5:  # Monday = 0, Friday = 4
+                    weekday = current_date.weekday() + 1  # Convert to 1-5 for Monday-Friday
+                    
+                    # Get conflicts for this day
+                    conflicts = {
+                        conflict.period
+                        for conflict in class_obj.weeklySchedule.conflicts
+                        if conflict.dayOfWeek == weekday
+                    }
+                    
+                    # Create variables only for non-conflicting periods
                     for period in range(1, 9):  # periods 1-8
-                        var_name = f"class_{class_obj.id}_{current_date.date()}_{period}"
-                        var = context.model.NewBoolVar(var_name)
-                        context.variables.append({
-                            "variable": var,
-                            "classId": class_obj.id,
-                            "date": current_date,
-                            "period": period
-                        })
+                        if period not in conflicts:
+                            var_name = f"class_{class_obj.id}_{current_date.date()}_{period}"
+                            var = context.model.NewBoolVar(var_name)
+                            context.variables.append({
+                                "variable": var,
+                                "classId": class_obj.id,
+                                "date": current_date,
+                                "period": period
+                            })
+                            class_vars += 1
                 current_date = current_date + timedelta(days=1)
+            print(f"- Created {class_vars} variables")
 
 class SolutionCallback(cp_model.CpSolverSolutionCallback):
     """Callback to track solver progress and store intermediate solutions"""
@@ -231,6 +318,25 @@ class SolutionCallback(cp_model.CpSolverSolutionCallback):
         if objective_value > self._best_objective:
             self._best_objective = objective_value
             self._best_solution = self._convert_solution()
+            
+            # Log solution details
+            print(f"\nFound better solution {self._solutions} at {current_time - self._start_time:.1f}s")
+            print(f"Objective value: {objective_value}")
+            
+            # Count assignments by day
+            by_day = {}
+            for assignment in self._best_solution:
+                date = datetime.fromisoformat(assignment.date).date()
+                if date not in by_day:
+                    by_day[date] = []
+                by_day[date].append(assignment)
+            
+            print("\nAssignments by day:")
+            for date in sorted(by_day.keys()):
+                assignments = by_day[date]
+                print(f"{date}: {len(assignments)} classes")
+                for assignment in sorted(assignments, key=lambda a: a.timeSlot.period):
+                    print(f"  Period {assignment.timeSlot.period}: {assignment.classId}")
         
         # Log every 3 seconds
         if (current_time - self._last_log_time) >= 3.0:

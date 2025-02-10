@@ -13,7 +13,8 @@ class RequiredPeriodsObjective(BaseObjective):
     1. Required period assignments (highest priority)
     2. Preferred period assignments (weighted by class preference)
     3. Avoiding certain periods (weighted by class avoidance)
-    4. Earlier dates (lowest priority)
+    4. Early scheduling in last week (medium priority)
+    5. Earlier dates (lowest priority)
     """
     
     def __init__(self):
@@ -25,6 +26,12 @@ class RequiredPeriodsObjective(BaseObjective):
     def create_terms(self, context: SchedulerContext) -> List[cp_model.LinearExpr]:
         terms = []
         start_date = context.start_date
+        
+        # Add early scheduling variables from context
+        early_vars = context.debug_info.get("early_scheduling_vars", [])
+        for var in early_vars:
+            # Weight of 5000 puts this between required periods (10000) and preferred periods (1000)
+            terms.append(5000 * var)
         
         for var in context.variables:
             # Get class object for this variable

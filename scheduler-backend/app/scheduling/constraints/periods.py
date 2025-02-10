@@ -129,30 +129,8 @@ class ConflictPeriodsConstraint(BaseConstraint):
         super().__init__("conflict_periods")
         
     def apply(self, context: SchedulerContext) -> None:
-        conflict_count = 0
-        
-        # Add constraints for each class with conflicts
-        for class_obj in context.request.classes:
-            if not class_obj.weeklySchedule.conflicts:
-                continue
-                
-            # Get variables for this class
-            for var in context.variables:
-                if var["classId"] == class_obj.id:
-                    weekday = var["date"].weekday() + 1
-                    period = var["period"]
-                    
-                    # Check if this slot conflicts
-                    is_conflict = any(
-                        conflict.dayOfWeek == weekday and conflict.period == period
-                        for conflict in class_obj.weeklySchedule.conflicts
-                    )
-                    
-                    if is_conflict:
-                        context.model.Add(var["variable"] == 0)
-                        conflict_count += 1
-        
-        print(f"Added {conflict_count} conflict period constraints")
+        # No need to add constraints since we only create variables for non-conflicting periods
+        print("Skipping conflict period constraints (handled during variable creation)")
     
     def validate(
         self,

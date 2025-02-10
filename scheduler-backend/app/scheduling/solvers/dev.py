@@ -6,6 +6,7 @@ from ..core import SchedulerContext
 from ..constraints.assignment import SingleAssignmentConstraint, NoOverlapConstraint
 from ..constraints.teacher import TeacherAvailabilityConstraint
 from ..constraints.periods import RequiredPeriodsConstraint, ConflictPeriodsConstraint
+from ..constraints.limits import DailyLimitConstraint, WeeklyLimitConstraint, MinimumPeriodsConstraint
 from ..objectives.required import RequiredPeriodsObjective
 from ..objectives.distribution import DistributionObjective
 
@@ -39,9 +40,16 @@ class DevSolver(BaseSolver):
         self.add_constraint(RequiredPeriodsConstraint())
         self.add_constraint(ConflictPeriodsConstraint())
         
+        # Add scheduling limit constraints
+        self.add_constraint(DailyLimitConstraint())
+        self.add_constraint(WeeklyLimitConstraint())
+        self.add_constraint(MinimumPeriodsConstraint())
+        
         # Add objectives with preset weights (defined in each objective class)
         self.add_objective(RequiredPeriodsObjective())  # Uses weight=1000
-        self.add_objective(DistributionObjective())     # Uses weight=500
+        
+        # Temporarily disable distribution optimization
+        # self.add_objective(DistributionObjective())     # Uses weight=500
         
     def compare_with_stable(self, stable_response: ScheduleResponse, dev_response: ScheduleResponse) -> Dict[str, Any]:
         """Compare dev solver results with stable solver"""

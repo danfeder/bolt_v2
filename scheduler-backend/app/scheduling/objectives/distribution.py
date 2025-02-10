@@ -41,6 +41,7 @@ class DistributionObjective(BaseObjective):
         # Group variables by week
         by_week = defaultdict(list)
         for var in context.variables:
+            # Both var["date"] and context.start_date are datetime objects from base solver
             week_num = (var["date"] - context.start_date).days // 7
             by_week[week_num].append(var)
         
@@ -138,25 +139,40 @@ class DistributionObjective(BaseObjective):
         """Calculate distribution metrics for assigned schedule"""
         classes_per_week = defaultdict(int)
         classes_per_period = defaultdict(lambda: defaultdict(int))
-        teacher_periods = defaultdict(lambda: defaultdict(int))  # Changed from str to int
+        teacher_periods = defaultdict(lambda: defaultdict(int))
+        
+        print("\nCalculating distribution metrics...")
+        print(f"Total assignments: {len(assignments)}")
         
         # Group assignments and calculate metrics
         for assignment in assignments:
-            # Parse the ISO format date string into a datetime object
-            date = datetime.fromisoformat(assignment.date)
-            period = assignment.timeSlot.period
-            class_id = assignment.classId
-            
-            # Calculate week number using datetime objects
-            week_num = (date - context.start_date).days // 7
-            classes_per_week[week_num] += 1
-            
-            # Use string dates consistently for dictionary keys
-            date_str = assignment.date
-            
-            # Daily distribution
-            classes_per_period[date_str][period] += 1
-            teacher_periods[date_str][class_id] += 1
+            try:
+                # Parse the ISO format date string into a datetime object
+                date = datetime.fromisoformat(assignment.date)
+                period = assignment.timeSlot.period
+                class_id = assignment.classId
+                
+                # Calculate week number using datetime objects
+                week_num = (date - context.start_date).days // 7
+                classes_per_week[week_num] += 1
+                
+                # Use date string for dictionary keys
+                date_str = date.date().isoformat()
+                
+                # Daily distribution
+                classes_per_period[date_str][period] += 1
+                teacher_periods[date_str][class_id] += 1
+                
+                print(f"Processed assignment: date={date_str}, period={period}, class={class_id}, week={week_num}")
+                
+            except Exception as e:
+                print(f"Error processing assignment: {assignment}")
+                print(f"Error details: {str(e)}")
+                raise
+        
+        print("\nWeekly distribution:")
+        for week, count in classes_per_week.items():
+            print(f"Week {week}: {count} classes")
         
         # Calculate variances and spreads
         week_counts = list(classes_per_week.values())
@@ -200,6 +216,10 @@ class DistributionObjective(BaseObjective):
         
         # Penalize weekly variance
         total_score += -100 * week_variance
+        
+        print("\nDistribution metrics calculated:")
+        print(f"Week variance: {week_variance}")
+        print(f"Total score: {total_score}")
         
         return DistributionMetrics(
             classes_per_week=dict(classes_per_week),
