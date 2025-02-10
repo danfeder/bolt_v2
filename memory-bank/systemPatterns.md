@@ -24,7 +24,7 @@ flowchart TD
     
     subgraph Scheduler
         subgraph "CP-SAT Solvers"
-            StableV1[Stable v1]
+            StableV2[Stable v2]
             DevVersion[Development]
         end
     end
@@ -41,22 +41,22 @@ flowchart TD
 ### 2. Development Workflow
 - **Pattern**: Two-Version Development
 - **Implementation**: 
-  - Stable Version: `or-tools-cp.ts`
-  - Development Version: `or-tools-cp-dev.ts`
+  - Stable Version: `solvers/stable.py`
+  - Development Version: `solvers/dev.py`
 - **Key Features**:
-  - Clear separation of concerns
-  - Safe feature development
-  - Easy comparison testing
-  - Reliable fallback option
+  - Solution quality experimentation
+  - Search strategy testing
+  - Objective weight tuning
+  - Performance monitoring
 
 ### 3. Scheduling Algorithm
-- **Pattern**: CP-SAT solver with hierarchical constraints
+- **Pattern**: CP-SAT solver with optimized search
 - **Implementation**: OR-Tools CP-SAT
 - **Key Features**:
-  - Required periods enforcement
-  - Teacher availability handling
-  - Efficient constraint satisfaction
-  - Multi-objective optimization
+  - Pre-filtered variable creation
+  - Search strategy optimization
+  - Quality-focused objectives
+  - Multi-objective balancing
   - Performance monitoring
   - Comprehensive validation
 
@@ -64,89 +64,84 @@ flowchart TD
 - **Pattern**: Functional components with hooks
 - **Structure**:
   ```
-  src/
-  ├── components/    # UI components
-  ├── lib/          # Core business logic
-  ├── store/        # State management
-  └── types/        # TypeScript definitions
+  scheduler-backend/
+  ├── app/
+  │   ├── scheduling/
+  │   │   ├── constraints/    # Scheduling constraints
+  │   │   ├── objectives/     # Optimization objectives
+  │   │   ├── solvers/       # Solver implementations
+  │   │   └── utils/         # Shared utilities
+  │   └── models.py          # Data models
   ```
 
 ### 5. Data Models
-- **Pattern**: TypeScript interfaces for type safety
+- **Pattern**: TypeScript interfaces and Python dataclasses
 - **Core Types**:
   - TimeSlot
-  - WeeklySchedule (with required periods)
+  - WeeklySchedule
   - Class
-  - TeacherAvailability (with timezone handling)
+  - TeacherAvailability
   - ScheduleAssignment
   - ScheduleConstraints
-  - RequiredPeriod
-  - UnavailableSlot
+  - SchedulerContext
 
 ## Technical Decisions
 
-### 1. Framework Selection
-- **React**: Component-based UI development
-- **TypeScript**: Type safety and developer experience
-- **Vite**: Fast development and build tooling
-- **Tailwind**: Utility-first styling
+### 1. Variable Creation Strategy
+- **Pattern**: Pre-filtered variable creation
+- **Implementation**:
+  - Only create variables for valid periods
+  - Filter out conflicting periods early
+  - Reduce search space significantly
+  - Track variable creation in debug info
 
-### 2. State Management
-- **Choice**: Zustand over Redux/MobX
-- **Rationale**: 
-  - Simpler API
-  - Built-in TypeScript support
-  - Minimal boilerplate
-  - Good performance
+### 2. Priority System
+- **Pattern**: Hierarchical weights
+- **Implementation**:
+  1. Required periods (10000)
+  2. Early scheduling (5000)
+  3. Preferred periods (1000 × weight)
+  4. Avoided periods (-500 × weight)
+  5. Earlier dates (10 to 0)
 
-### 3. Scheduling Implementation
-- **Approach**: CP-SAT solver with hierarchical constraints
-- **Benefits**:
-  - Required periods prioritization
-  - Teacher availability respect
-  - Efficient constraint solving
-  - Safe feature development
-  - Easy testing and validation
-  - Performance optimization
-- **Workflow**:
-  - Stable version with all features
-  - Development version for new features
-  - Thorough testing before promotion
-  - Clear validation criteria
-- **Constraint Hierarchy**:
-  1. Required periods (highest priority)
-  2. Teacher availability
-  3. Basic scheduling rules
-  4. Optimization preferences
+### 3. Search Strategy
+- **Pattern**: Quality-focused search
+- **Implementation**:
+  - Alternative search heuristics
+  - Solver parameter tuning
+  - Solution pattern analysis
+  - Quality metrics tracking
 
-### 4. Data Validation
-- **Strategy**: Multi-level validation
-  - Type checking with TypeScript
-  - Required periods validation
-  - Teacher availability verification
-  - Runtime constraint validation
-  - Schedule verification
-  - User input validation
-  - Timezone consistency checks
+### 4. Data Sharing
+- **Pattern**: Context-based communication
+- **Implementation**:
+  - SchedulerContext for shared state
+  - debug_info for cross-component data
+  - Quality metrics tracking
+  - Enhanced logging capabilities
 
 ## Performance Patterns
 
-### 1. Optimization
-- Required periods prioritization
-- Teacher availability tracking
-- Valid time slot caching
-- Daily/weekly assignment count tracking
-- Date string memoization
-- Timezone-aware date handling
+### 1. Search Space Optimization
+- Pre-filtered variable creation
+- Quality-focused search strategies
+- Solution pattern analysis
+- Efficient constraint application
 
 ### 2. Development Strategies
-- Feature isolation in development version
-- Comprehensive testing before promotion
-- Performance comparison with stable version
-- Clear validation requirements
+- Solution quality experiments
+- A/B testing changes
+- Quality metrics tracking
+- Pattern documentation
 
 ## Error Handling
-- Comprehensive error messages
-- User-friendly error display
-- Detailed validation feedback
-- Debug panel for troubleshooting
+- Detailed variable creation logs
+- Constraint validation feedback
+- Quality metric monitoring
+- Performance tracking metrics
+
+## Testing Strategy
+- Solution quality verification
+- Search strategy validation
+- Quality metrics tracking
+- Performance benchmarking
