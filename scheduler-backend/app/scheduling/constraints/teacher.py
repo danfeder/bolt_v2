@@ -1,6 +1,6 @@
 from collections import defaultdict
 from typing import List, Dict, Any, Set, Tuple
-from dateutil import parser
+from datetime import datetime
 from dateutil.tz import UTC
 
 from ortools.sat.python import cp_model
@@ -18,7 +18,7 @@ class TeacherAvailabilityConstraint(BaseConstraint):
         # Build lookup of unavailable periods
         unavailable_slots: Set[Tuple[str, int]] = set()
         for teacher_avail in context.request.teacherAvailability:
-            avail_date = parser.parse(teacher_avail.date)
+            avail_date = datetime.fromisoformat(teacher_avail.date)
             if avail_date.tzinfo is None:
                 avail_date = avail_date.replace(tzinfo=UTC)
                 
@@ -46,7 +46,7 @@ class TeacherAvailabilityConstraint(BaseConstraint):
         # Build lookup of unavailable periods
         unavailable_slots: Set[Tuple[str, int]] = set()
         for teacher_avail in context.request.teacherAvailability:
-            avail_date = parser.parse(teacher_avail.date)
+            avail_date = datetime.fromisoformat(teacher_avail.date)
             if avail_date.tzinfo is None:
                 avail_date = avail_date.replace(tzinfo=UTC)
                 
@@ -56,19 +56,19 @@ class TeacherAvailabilityConstraint(BaseConstraint):
         
         # Check each assignment
         for assignment in assignments:
-            date = parser.parse(assignment["date"]).date().isoformat()
-            period = assignment["timeSlot"]["period"]
+            date = datetime.fromisoformat(assignment.date).date().isoformat()
+            period = assignment.timeSlot.period
             key = (date, period)
             
             if key in unavailable_slots:
                 violations.append(ConstraintViolation(
                     message=(
-                        f"Class {assignment['classId']} scheduled during "
+                        f"Class {assignment.classId} scheduled during "
                         f"unavailable period {period} on {date}"
                     ),
                     severity="error",
                     context={
-                        "classId": assignment["classId"],
+                        "classId": assignment.classId,
                         "date": date,
                         "period": period
                     }

@@ -1,6 +1,6 @@
 from collections import defaultdict
 from typing import List, Dict, Any, Set, Tuple
-from dateutil import parser
+from datetime import datetime
 from dateutil.tz import UTC
 
 from ortools.sat.python import cp_model
@@ -81,7 +81,7 @@ class RequiredPeriodsConstraint(BaseConstraint):
                 
             # Find this class's assignment
             assignment = next(
-                (a for a in assignments if a["classId"] == class_obj.id),
+                (a for a in assignments if a.classId == class_obj.id),
                 None
             )
             
@@ -94,8 +94,8 @@ class RequiredPeriodsConstraint(BaseConstraint):
                 continue
                 
             # Check if assigned time matches a required period
-            weekday = parser.parse(assignment["date"]).weekday() + 1
-            period = assignment["timeSlot"]["period"]
+            weekday = datetime.fromisoformat(assignment.date).weekday() + 1
+            period = assignment.timeSlot.period
             
             is_required = any(
                 rp.dayOfWeek == weekday and rp.period == period
@@ -168,7 +168,7 @@ class ConflictPeriodsConstraint(BaseConstraint):
                 
             # Find this class's assignment
             assignment = next(
-                (a for a in assignments if a["classId"] == class_obj.id),
+                (a for a in assignments if a.classId == class_obj.id),
                 None
             )
             
@@ -176,8 +176,8 @@ class ConflictPeriodsConstraint(BaseConstraint):
                 continue  # Missing assignment will be caught by SingleAssignmentConstraint
                 
             # Check if assigned time conflicts
-            weekday = parser.parse(assignment["date"]).weekday() + 1
-            period = assignment["timeSlot"]["period"]
+            weekday = datetime.fromisoformat(assignment.date).weekday() + 1
+            period = assignment.timeSlot.period
             
             conflicts = [
                 conflict for conflict in class_obj.weeklySchedule.conflicts

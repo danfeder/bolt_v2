@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import List, Dict, Any
 from dataclasses import dataclass
 import statistics
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from ortools.sat.python import cp_model
 
@@ -138,26 +138,25 @@ class DistributionObjective(BaseObjective):
         """Calculate distribution metrics for assigned schedule"""
         classes_per_week = defaultdict(int)
         classes_per_period = defaultdict(lambda: defaultdict(int))
-        teacher_periods = defaultdict(lambda: defaultdict(str))
+        teacher_periods = defaultdict(lambda: defaultdict(int))  # Changed from str to int
         
         # Group assignments and calculate metrics
         for assignment in assignments:
-            date = assignment.date  # Access as property, not dict key
+            # Parse the ISO format date string into a datetime object
+            date = datetime.fromisoformat(assignment.date)
             period = assignment.timeSlot.period
             class_id = assignment.classId
             
-            # Parse dates consistently
-            assignment_date = parser.parse(date)
-            
-            # Weekly distribution
-            week_num = (
-                assignment_date - context.start_date
-            ).days // 7
+            # Calculate week number using datetime objects
+            week_num = (date - context.start_date).days // 7
             classes_per_week[week_num] += 1
             
+            # Use string dates consistently for dictionary keys
+            date_str = assignment.date
+            
             # Daily distribution
-            classes_per_period[date][period] += 1
-            teacher_periods[date][class_id] += 1
+            classes_per_period[date_str][period] += 1
+            teacher_periods[date_str][class_id] += 1
         
         # Calculate variances and spreads
         week_counts = list(classes_per_week.values())
@@ -169,7 +168,7 @@ class DistributionObjective(BaseObjective):
         
         # Calculate period spread for each day
         period_spread = {}
-        for date, periods in classes_per_period.items():
+        for date_str, periods in classes_per_period.items():
             counts = [periods[p] for p in range(1, 9)]
             variance = (
                 statistics.variance(counts)
@@ -178,13 +177,13 @@ class DistributionObjective(BaseObjective):
             )
             # Convert to spread score (1 - normalized variance)
             max_variance = 4.0  # Theoretical maximum
-            period_spread[date] = 1.0 - min(variance / max_variance, 1.0)
+            period_spread[date_str] = 1.0 - min(variance / max_variance, 1.0)
         
         # Calculate teacher load variance for each day
         teacher_load_variance = {}
-        for date, loads in teacher_periods.items():
+        for date_str, loads in teacher_periods.items():
             counts = list(loads.values())
-            teacher_load_variance[date] = (
+            teacher_load_variance[date_str] = (
                 statistics.variance(counts)
                 if len(counts) > 1
                 else 0.0
@@ -192,11 +191,11 @@ class DistributionObjective(BaseObjective):
         
         # Calculate overall distribution score
         total_score = 0
-        for date in classes_per_period.keys():
+        for date_str in classes_per_period.keys():
             # Penalize poor period spread
-            spread_penalty = -200 * (1.0 - period_spread[date])
+            spread_penalty = -200 * (1.0 - period_spread[date_str])
             # Penalize teacher load imbalance
-            load_penalty = -150 * teacher_load_variance[date]
+            load_penalty = -150 * teacher_load_variance.get(date_str, 0.0)
             total_score += spread_penalty + load_penalty
         
         # Penalize weekly variance
