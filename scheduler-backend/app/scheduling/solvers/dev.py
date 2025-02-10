@@ -1,55 +1,106 @@
-from typing import List, Dict, Any
+"""Development solver with experimental optimizations"""
+from typing import Dict, Any, List
 import traceback
-import time
+from dateutil import parser
 
 from ..core import SchedulerContext
-from ..constraints.assignment import SingleAssignmentConstraint, NoOverlapConstraint
-from ..constraints.teacher import TeacherAvailabilityConstraint
-from ..constraints.periods import RequiredPeriodsConstraint, ConflictPeriodsConstraint
-from ..constraints.limits import DailyLimitConstraint, WeeklyLimitConstraint, MinimumPeriodsConstraint
-from ..objectives.required import RequiredPeriodsObjective
 from ..objectives.distribution import DistributionObjective
-
 from .base import BaseSolver
-from ...models import ScheduleRequest, ScheduleResponse
+from .config import get_base_constraints, get_base_objectives, WEIGHTS
+from ...models import ScheduleRequest, ScheduleResponse, TimeSlot
 
 class DevSolver(BaseSolver):
-    """
-    Development solver with advanced optimization features:
-    1. All features from stable solver
-    2. Enhanced distribution optimization:
-       - Improved weekly load balancing
-       - Better period spread within days
-       - Smarter handling of consecutive classes
-    3. Multi-objective optimization
-       - Weighted combination of objectives
-       - Pareto-optimal solutions tracking
-    
-    Weights:
-    - RequiredPeriodsObjective: 1000 (maintaining same weight for stability)
-    - DistributionObjective: 500 (same base weight, but with enhanced terms)
-    """
+    """Development solver for testing new optimization strategies"""
     
     def __init__(self):
         super().__init__("cp-sat-dev")
+        self._last_run_metadata = None
         
-        # Add same constraints as stable solver
-        self.add_constraint(SingleAssignmentConstraint())
-        self.add_constraint(NoOverlapConstraint())
-        self.add_constraint(TeacherAvailabilityConstraint())
-        self.add_constraint(RequiredPeriodsConstraint())
-        self.add_constraint(ConflictPeriodsConstraint())
-        
-        # Add scheduling limit constraints
-        self.add_constraint(DailyLimitConstraint())
-        self.add_constraint(WeeklyLimitConstraint())
-        self.add_constraint(MinimumPeriodsConstraint())
-        
-        # Add objectives with preset weights (defined in each objective class)
-        self.add_objective(RequiredPeriodsObjective())  # Uses weight=1000
-        
-        # Temporarily disable distribution optimization
-        # self.add_objective(DistributionObjective())     # Uses weight=500
+        # Add base constraints and objectives
+        for constraint in get_base_constraints():
+            self.add_constraint(constraint)
+            
+        for objective in get_base_objectives():
+            self.add_objective(objective)
+            
+        # Add experimental distribution optimization with configured weight
+        self.add_objective(
+            DistributionObjective()
+        )
+
+    def get_last_run_metrics(self) -> Dict[str, Any]:
+        """Get metrics from last solver run"""
+        if not self._last_run_metadata:
+            return {
+                "status": "No runs available",
+                "metrics": None
+            }
+        return {
+            "status": "success",
+            "metrics": {
+                "duration": self._last_run_metadata.duration,
+                "score": self._last_run_metadata.score,
+                "solutions_found": self._last_run_metadata.solutions_found,
+                "optimization_gap": self._last_run_metadata.optimization_gap,
+                "distribution": self._last_run_metadata.distribution.dict() if self._last_run_metadata.distribution else None
+            }
+        }
+
+    def create_schedule(self, request: ScheduleRequest) -> ScheduleResponse:
+        """Create a schedule using the development solver configuration"""
+        print(f"\nStarting development solver for {len(request.classes)} classes...")
+        print("\nSolver configuration:")
+        print("Constraints:")
+        for constraint in self.constraints:
+            print(f"- {constraint.name}")
+        print("\nObjectives:")
+        for objective in self.objectives:
+            print(f"- {objective.name} (weight: {objective.weight})")
+            
+        try:
+            # Validate dates
+            start_date = parser.parse(request.startDate)
+            end_date = parser.parse(request.endDate)
+            
+            # Create schedule using base solver
+            response = super().create_schedule(request)
+            
+            # Validate solution
+            print("\nValidating constraints...")
+            all_violations = []
+            context = SchedulerContext(
+                model=None,  # Not needed for validation
+                solver=None,  # Not needed for validation
+                request=request,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            for constraint in self.constraints:
+                violations = constraint.validate(
+                    response.assignments,
+                    context
+                )
+                if violations:
+                    print(f"\nViolations for {constraint.name}:")
+                    for v in violations:
+                        print(f"- {v.message}")
+                    all_violations.extend(violations)
+            
+            if all_violations:
+                raise Exception(
+                    f"Schedule validation failed with {len(all_violations)} violations"
+                )
+            
+            print("\nAll constraints satisfied!")
+            self._last_run_metadata = response.metadata
+            return response
+
+        except Exception as e:
+            print(f"Scheduling error in development solver: {str(e)}")
+            print("Full traceback:")
+            print(traceback.format_exc())
+            raise
         
     def compare_with_stable(self, stable_response: ScheduleResponse, dev_response: ScheduleResponse) -> Dict[str, Any]:
         """Compare dev solver results with stable solver"""

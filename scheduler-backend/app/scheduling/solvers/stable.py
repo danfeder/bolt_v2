@@ -1,64 +1,25 @@
-from typing import List, Dict, Any
+"""Stable solver implementation using shared configuration"""
+from typing import List
 import traceback
-import time
-
-from ..core import SchedulerContext
-from ..constraints.assignment import SingleAssignmentConstraint, NoOverlapConstraint
-from ..constraints.teacher import TeacherAvailabilityConstraint
-from ..constraints.periods import RequiredPeriodsConstraint, ConflictPeriodsConstraint
-from ..constraints.limits import DailyLimitConstraint, WeeklyLimitConstraint, MinimumPeriodsConstraint
-from ..objectives.required import RequiredPeriodsObjective
-from ..objectives.distribution import DistributionObjective
-
-from .base import BaseSolver
-from ...models import ScheduleRequest, ScheduleResponse
 from dateutil import parser
 
+from ..core import SchedulerContext
+from ...models import ScheduleRequest, ScheduleResponse
+from .base import BaseSolver
+from .config import get_base_constraints, get_base_objectives
+
 class StableSolver(BaseSolver):
-    """
-    Production-ready solver implementing all scheduling features:
-    1. Basic scheduling constraints
-       - Single assignment per class
-       - No overlapping classes
-       - Only weekdays periods 1-8
-    2. Required scheduling rules
-       - Required period assignments
-       - Teacher availability
-       - Conflict periods
-    3. Distribution optimization
-       - Even distribution across weeks
-       - Even distribution within days
-       - Balanced teacher workload
-    4. Preference satisfaction
-       - Preferred period assignments
-       - Avoided period penalties
-       - Earlier date preference
-    
-    Weights:
-    - RequiredPeriodsObjective: 1000 (highest priority for required/preferred periods)
-    - DistributionObjective: 500 (balancing schedule distribution)
-    """
+    """Production-ready solver using tried and tested configuration"""
     
     def __init__(self):
         super().__init__("cp-sat-stable")
         
-        # Add constraints in order of priority
-        self.add_constraint(SingleAssignmentConstraint())
-        self.add_constraint(NoOverlapConstraint())
-        self.add_constraint(TeacherAvailabilityConstraint())
-        self.add_constraint(RequiredPeriodsConstraint())
-        self.add_constraint(ConflictPeriodsConstraint())
-        
-        # Add scheduling limit constraints
-        self.add_constraint(DailyLimitConstraint())
-        self.add_constraint(WeeklyLimitConstraint())
-        self.add_constraint(MinimumPeriodsConstraint())
-        
-        # Add objectives with preset weights (defined in each objective class)
-        self.add_objective(RequiredPeriodsObjective())  # Uses weight=1000
-        
-        # Temporarily disable distribution optimization
-        # self.add_objective(DistributionObjective())     # Uses weight=500
+        # Add base constraints and objectives
+        for constraint in get_base_constraints():
+            self.add_constraint(constraint)
+            
+        for objective in get_base_objectives():
+            self.add_objective(objective)
         
     def create_schedule(self, request: ScheduleRequest) -> ScheduleResponse:
         """Create a schedule using the stable solver configuration"""

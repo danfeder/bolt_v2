@@ -7,7 +7,7 @@
 flowchart TD
     App --> Components
     App --> Store
-    Store --> Scheduler
+    Store --> ApiClient
     
     subgraph Components
         Calendar
@@ -22,8 +22,8 @@ flowchart TD
         scheduleStore[Schedule Store]
     end
     
-    subgraph Scheduler
-        subgraph "CP-SAT Solvers"
+    subgraph ApiClient
+        subgraph "Backend Solvers"
             StableV2[Stable v2]
             DevVersion[Development]
         end
@@ -43,13 +43,28 @@ flowchart TD
 - **Implementation**: 
   - Stable Version: `solvers/stable.py`
   - Development Version: `solvers/dev.py`
+  - Shared Config: `solvers/config.py`
 - **Key Features**:
   - Solution quality experimentation
   - Search strategy testing
-  - Objective weight tuning
+  - Standardized configuration
   - Performance monitoring
 
-### 3. Scheduling Algorithm
+### 3. Configuration Management
+- **Pattern**: Centralized solver configuration
+- **Implementation**: `solvers/config.py`
+- **Key Features**:
+  - Shared constraint definitions
+  - Standard objective weights
+  - Consistent priority hierarchy
+  - Single source of truth for solver settings
+- **Benefits**:
+  - Simplified maintenance
+  - Consistent behavior
+  - Easy experimentation
+  - Clear configuration documentation
+
+### 4. Scheduling Algorithm
 - **Pattern**: CP-SAT solver with optimized search
 - **Implementation**: OR-Tools CP-SAT
 - **Key Features**:
@@ -60,7 +75,7 @@ flowchart TD
   - Performance monitoring
   - Comprehensive validation
 
-### 4. Component Architecture
+### 5. Component Architecture
 - **Pattern**: Functional components with hooks
 - **Structure**:
   ```
@@ -70,11 +85,14 @@ flowchart TD
   │   │   ├── constraints/    # Scheduling constraints
   │   │   ├── objectives/     # Optimization objectives
   │   │   ├── solvers/       # Solver implementations
+  │   │   │   ├── config.py  # Shared configuration
+  │   │   │   ├── stable.py  # Stable solver
+  │   │   │   └── dev.py     # Development solver
   │   │   └── utils/         # Shared utilities
   │   └── models.py          # Data models
   ```
 
-### 5. Data Models
+### 6. Data Models
 - **Pattern**: TypeScript interfaces and Python dataclasses
 - **Core Types**:
   - TimeSlot
@@ -95,14 +113,15 @@ flowchart TD
   - Reduce search space significantly
   - Track variable creation in debug info
 
-### 2. Priority System
+### 2. Priority System (from config.py)
 - **Pattern**: Hierarchical weights
 - **Implementation**:
-  1. Required periods (10000)
-  2. Early scheduling (5000)
-  3. Preferred periods (1000 × weight)
-  4. Avoided periods (-500 × weight)
-  5. Earlier dates (10 to 0)
+  1. Required periods (10000) - Highest priority
+  2. Early scheduling (5000) - High priority
+  3. Preferred periods (1000 × weight) - Medium priority
+  4. Avoided periods (-500 × weight) - Penalty
+  5. Distribution (500) - Balance schedule
+  6. Earlier dates (10) - Slight preference
 
 ### 3. Search Strategy
 - **Pattern**: Quality-focused search

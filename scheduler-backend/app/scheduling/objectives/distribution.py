@@ -30,9 +30,10 @@ class DistributionObjective(BaseObjective):
     """
     
     def __init__(self):
+        from ..solvers.config import WEIGHTS
         super().__init__(
             name="distribution",
-            weight=500  # Lower weight than required periods
+            weight=WEIGHTS['distribution']  # Use standardized weight from config
         )
     
     def create_terms(self, context: SchedulerContext) -> List[cp_model.LinearExpr]:

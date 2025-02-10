@@ -9,13 +9,13 @@ export interface ComplexityMetrics {
 }
 
 export interface SolverDecision {
-  solver: 'or-tools' | 'backtracking';
+  solverVersion: 'stable' | 'dev';
   reason: string;
   metrics: ComplexityMetrics;
 }
 
 /**
- * Analyzes schedule complexity to determine the appropriate solver
+ * Analyzes schedule complexity to determine which solver version to use
  */
 export function analyzeScheduleComplexity(
   classes: Class[],
@@ -51,24 +51,24 @@ export function analyzeScheduleComplexity(
     overallComplexity
   };
 
-  // Decision thresholds
-  const useOrTools = 
-    totalClasses > 10 ||                  // Many classes
-    constraintComplexity > 70 ||          // Complex constraints
-    teacherConflicts > 20 ||              // Many teacher conflicts
-    overallComplexity > 60;               // High overall complexity
+  // Decision thresholds for using dev solver
+  const useDev = 
+    totalClasses > 20 ||                  // Many classes
+    constraintComplexity > 80 ||          // Very complex constraints
+    teacherConflicts > 30 ||              // Many teacher conflicts
+    overallComplexity > 70;               // High overall complexity
 
-  if (useOrTools) {
+  if (useDev) {
     return {
-      solver: 'or-tools',
-      reason: determineOrToolsReason(metrics),
+      solverVersion: 'dev',
+      reason: determineSolverReason(metrics, 'dev'),
       metrics
     };
   }
 
   return {
-    solver: 'backtracking',
-    reason: 'Schedule complexity is suitable for backtracking algorithm',
+    solverVersion: 'stable',
+    reason: determineSolverReason(metrics, 'stable'),
     metrics
   };
 }
@@ -127,21 +127,24 @@ function calculateOverallComplexity(metrics: ComplexityMetrics): number {
   );
 }
 
-function determineOrToolsReason(metrics: ComplexityMetrics): string {
+function determineSolverReason(metrics: ComplexityMetrics, version: 'stable' | 'dev'): string {
   const reasons: string[] = [];
 
-  if (metrics.totalClasses > 10) {
-    reasons.push('large number of classes');
+  if (version === 'dev') {
+    if (metrics.totalClasses > 20) {
+      reasons.push('large number of classes');
+    }
+    if (metrics.constraintComplexity > 80) {
+      reasons.push('very complex scheduling constraints');
+    }
+    if (metrics.teacherConflicts > 30) {
+      reasons.push('high number of teacher conflicts');
+    }
+    if (metrics.overallComplexity > 70) {
+      reasons.push('high overall scheduling complexity');
+    }
+    return `Using development solver for ${reasons.join(' and ')}`;
+  } else {
+    return 'Using stable solver for standard scheduling complexity';
   }
-  if (metrics.constraintComplexity > 70) {
-    reasons.push('complex scheduling constraints');
-  }
-  if (metrics.teacherConflicts > 20) {
-    reasons.push('significant teacher availability conflicts');
-  }
-  if (metrics.overallComplexity > 60) {
-    reasons.push('high overall scheduling complexity');
-  }
-
-  return `Using OR-Tools due to ${reasons.join(' and ')}`;
 }
