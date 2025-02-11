@@ -49,7 +49,7 @@ class BaseSolver:
             solver = cp_model.CpSolver()
             
             # Configure solver parameters for timeout and performance
-            solver.parameters.max_time_in_seconds = 30.0  # 30 second timeout
+            solver.parameters.max_time_in_seconds = 120.0  # 2 minute timeout
             solver.parameters.log_search_progress = True
             solver.parameters.num_search_workers = 8
             
@@ -148,7 +148,7 @@ class BaseSolver:
             callback = SolutionCallback(context)
             
             # Solve with timeout
-            print("\nStarting solver with 30 second timeout...")
+            print("\nStarting solver with 2 minute timeout...")
             start_time = time.time()
             status = solver.Solve(context.model, callback)
             duration_ms = int((time.time() - start_time) * 1000)

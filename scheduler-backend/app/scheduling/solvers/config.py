@@ -14,6 +14,9 @@ from ..constraints.limits import (
 # Objectives
 from ..objectives.required import RequiredPeriodsObjective
 from ..objectives.distribution import DistributionObjective
+from ..objectives.day_usage import DayUsageObjective
+from ..objectives.final_week import FinalWeekCompressionObjective
+from ..objectives.daily_balance import DailyBalanceObjective
 
 # Base Types
 from ..core import Constraint, Objective
@@ -34,15 +37,21 @@ def get_base_constraints() -> List[Constraint]:
 def get_base_objectives() -> List[Objective]:
     """Get the common objectives used by all solvers"""
     return [
-        RequiredPeriodsObjective(),  # weight=1000
+        RequiredPeriodsObjective(),     # weight=10000
+        DayUsageObjective(),            # weight=2000
+        FinalWeekCompressionObjective(),  # weight=3000
+        DailyBalanceObjective(),        # weight=1500
+        DistributionObjective(),        # weight=1000
     ]
 
 # Priority weights for different types of constraints/objectives
 WEIGHTS = {
-    'required_periods': 10000,    # Highest priority - required periods must be satisfied
-    'early_scheduling': 5000,     # High priority - schedule earlier when possible
-    'preferred_periods': 1000,    # Medium priority - try to use preferred periods
-    'avoid_periods': -500,        # Penalty for using avoided periods
-    'distribution': 500,          # Balance the schedule distribution
-    'earlier_dates': 10,         # Slight preference for earlier dates
+    'required_periods': 10000,        # Highest priority - required periods must be satisfied
+    'final_week_compression': 3000,   # High priority for final week optimization
+    'day_usage': 2000,               # Encourage using all available days
+    'daily_balance': 1500,           # Balance number of classes per day
+    'preferred_periods': 1000,        # Medium priority - try to use preferred periods
+    'distribution': 1000,             # Balance the period distribution (increased from 500)
+    'avoid_periods': -500,            # Penalty for using avoided periods
+    'earlier_dates': 10,             # Slight preference for earlier dates
 }

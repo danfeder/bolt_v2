@@ -211,15 +211,31 @@ class MinimumPeriodsConstraint(BaseConstraint):
     ) -> List[ConstraintViolation]:
         violations = []
         
-        # Count assignments per week
+        # Count assignments per week and also track weekdays per week
         by_week = defaultdict(int)
+        weekdays_by_week = defaultdict(set)  # Use set to count unique weekdays
+        
         for assignment in assignments:
             date = datetime.fromisoformat(assignment.date)
             week_num = (date - context.start_date).days // 7
             by_week[week_num] += 1
+            
+            # Only track weekdays (Mon-Fri)
+            if date.weekday() < 5:
+                weekdays_by_week[week_num].add(date.date())
         
-        # Check for violations
+        # Determine first and last weeks
+        sorted_weeks = sorted(by_week.keys())
+        first_week = sorted_weeks[0] if sorted_weeks else 0
+        last_week = sorted_weeks[-1] if sorted_weeks else 0
+        
+        # Check for violations (excluding first and last weeks)
         for week_num, count in by_week.items():
+            # Skip first and last weeks as they have special handling
+            if week_num in (first_week, last_week):
+                continue
+                
+            # Check regular weeks against full minimum
             if count < context.request.constraints.minPeriodsPerWeek:
                 violations.append(ConstraintViolation(
                     message=(
@@ -233,5 +249,26 @@ class MinimumPeriodsConstraint(BaseConstraint):
                         "minimum": context.request.constraints.minPeriodsPerWeek
                     }
                 ))
+            
+            # For first week, check pro-rated minimum if it's not a full week
+            if week_num == first_week and len(weekdays_by_week[week_num]) < 5:
+                available_days = len(weekdays_by_week[week_num])
+                pro_rated_min = (context.request.constraints.minPeriodsPerWeek * available_days) // 5
+                
+                if count < pro_rated_min:
+                    violations.append(ConstraintViolation(
+                        message=(
+                            f"Too few classes scheduled in first week (pro-rated): "
+                            f"got {count}, minimum is {pro_rated_min} "
+                            f"({available_days} available days)"
+                        ),
+                        severity="error",
+                        context={
+                            "weekNumber": week_num + 1,
+                            "count": count,
+                            "minimum": pro_rated_min,
+                            "availableDays": available_days
+                        }
+                    ))
         
         return violations
