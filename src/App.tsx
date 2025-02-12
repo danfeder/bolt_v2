@@ -5,13 +5,15 @@ import { TeacherAvailability } from './components/TeacherAvailability';
 import { ConstraintsForm } from './components/ConstraintsForm';
 import { ClassEditor } from './components/ClassEditor';
 import { ScheduleDebugPanel } from './components/ScheduleDebugPanel';
+import { SolverConfig } from './components/SolverConfig';
 import { useScheduleStore } from './store/scheduleStore';
-import { Calendar as CalendarIcon, AlertCircle, Play } from 'lucide-react';
+import { Calendar as CalendarIcon, AlertCircle, Play, Settings } from 'lucide-react';
 import { testClasses, testTeacherAvailability } from './store/testData';
 
 function App() {
   const { classes, generateSchedule, setClasses, setTeacherAvailability } = useScheduleStore();
   const [error, setError] = React.useState<string | null>(null);
+  const [showConfig, setShowConfig] = React.useState(false);
 
   const handleGenerateSchedule = () => {
     try {
@@ -35,13 +37,22 @@ function App() {
             <CalendarIcon className="text-blue-500" />
             <h1 className="text-3xl font-bold text-gray-900">Gym Class Rotation Scheduler</h1>
           </div>
-          <button
-            onClick={loadTestData}
-            className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
-          >
-            <Play size={20} />
-            Load Test Data
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadTestData}
+              className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+            >
+              <Play size={20} />
+              Load Test Data
+            </button>
+            <button
+              onClick={() => setShowConfig(!showConfig)}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+            >
+              <Settings size={20} />
+              {showConfig ? 'Hide Config' : 'Show Config'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -57,6 +68,12 @@ function App() {
             <TeacherAvailability />
             <ConstraintsForm />
           </div>
+
+          {showConfig && (
+            <div className="bg-white shadow rounded-lg">
+              <SolverConfig />
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border-l-4 border-red-400 p-4">

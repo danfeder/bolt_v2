@@ -1,183 +1,128 @@
-from collections import defaultdict
-from typing import List, Dict, Any, Set, Tuple
-from datetime import datetime
-from dateutil.tz import UTC
+"""Constraints related to period assignments"""
+from typing import List
+from ..core import Constraint, SchedulerContext
+from ...models import ScheduleAssignment
 
-from ortools.sat.python import cp_model
-
-from .base import BaseConstraint, ConstraintViolation
-from ..core import SchedulerContext
-
-class RequiredPeriodsConstraint(BaseConstraint):
-    """Ensures classes with required periods are scheduled in one of them"""
+class RequiredPeriodsConstraint(Constraint):
+    """Enforce required periods as hard constraints"""
     
     def __init__(self):
-        super().__init__("required_periods")
-        
-    def apply(self, context: SchedulerContext) -> None:
-        required_count = 0
-        
-        # First identify classes that share required periods
-        required_period_map = defaultdict(list)
-        for class_obj in context.request.classes:
-            if not class_obj.weeklySchedule.requiredPeriods:
-                continue
-            for rp in class_obj.weeklySchedule.requiredPeriods:
-                key = (rp.dayOfWeek, rp.period)
-                required_period_map[key].append(class_obj.id)
-                
-        # Log conflicts for debugging
-        for (day, period), class_ids in required_period_map.items():
-            if len(class_ids) > 1:
-                print(
-                    f"Warning: Multiple classes require day {day} period {period}: "
-                    f"{class_ids}"
-                )
-        
-        # Add constraints for each class with required periods
-        for class_obj in context.request.classes:
-            if not class_obj.weeklySchedule.requiredPeriods:
-                continue
-                
-            # Get variables for this class that match required periods
-            class_vars = []
-            for var in context.variables:
-                if var["classId"] == class_obj.id:
-                    weekday = var["date"].weekday() + 1
-                    period = var["period"]
-                    
-                    # Check if this slot matches a required period
-                    is_required = any(
-                        rp.dayOfWeek == weekday and rp.period == period
-                        for rp in class_obj.weeklySchedule.requiredPeriods
-                    )
-                    
-                    if is_required:
-                        class_vars.append(var["variable"])
-            
-            if not class_vars:
-                raise Exception(
-                    f"No valid time slots found for required periods of class {class_obj.id}. "
-                    f"Required periods: {[(rp.dayOfWeek, rp.period) for rp in class_obj.weeklySchedule.requiredPeriods]}"
-                )
-            
-            # Class must be scheduled in one of its required periods
-            context.model.Add(sum(class_vars) == 1)
-            required_count += 1
-        
-        print(f"Added required period constraints for {required_count} classes")
+        super().__init__("Required Periods")
     
-    def validate(
-        self,
-        assignments: List[Dict[str, Any]],
-        context: SchedulerContext
-    ) -> List[ConstraintViolation]:
-        violations = []
-        
-        # Check each class with required periods
+    def apply(self, context: SchedulerContext) -> None:
+        """Add hard constraints for required periods"""
         for class_obj in context.request.classes:
-            if not class_obj.weeklySchedule.requiredPeriods:
-                continue
-                
-            # Find this class's assignment
-            assignment = next(
-                (a for a in assignments if a.classId == class_obj.id),
-                None
-            )
-            
-            if not assignment:
-                violations.append(ConstraintViolation(
-                    message=f"Class {class_obj.id} with required periods is not scheduled",
-                    severity="error",
-                    context={"classId": class_obj.id}
-                ))
-                continue
-                
-            # Check if assigned time matches a required period
-            weekday = datetime.fromisoformat(assignment.date).weekday() + 1
-            period = assignment.timeSlot.period
-            
-            is_required = any(
-                rp.dayOfWeek == weekday and rp.period == period
-                for rp in class_obj.weeklySchedule.requiredPeriods
-            )
-            
-            if not is_required:
-                violations.append(ConstraintViolation(
-                    message=(
-                        f"Class {class_obj.id} not scheduled in a required period. "
-                        f"Assigned: day {weekday} period {period}"
-                    ),
-                    severity="error",
-                    context={
-                        "classId": class_obj.id,
-                        "assignedDay": weekday,
-                        "assignedPeriod": period,
-                        "requiredPeriods": [
-                            {"day": rp.dayOfWeek, "period": rp.period}
-                            for rp in class_obj.weeklySchedule.requiredPeriods
+            # Look for variables matching this class
+            class_vars = [
+                var for var in context.variables 
+                if var["classId"] == class_obj.id
+            ]
+
+            # If this class has required periods, enforce them
+            if hasattr(class_obj, 'required_periods') and class_obj.required_periods:
+                for required in class_obj.required_periods:
+                    # Find matching variable for this required period
+                    matching_vars = [
+                        var for var in class_vars
+                        if (var["date"].strftime("%Y-%m-%d") == required.date
+                            and var["period"] == required.period)
+                    ]
+                    
+                    if matching_vars:
+                        # Force assignment to this period
+                        context.model.Add(matching_vars[0]["variable"] == 1)
+                        
+                        # Prevent assignment to any other periods on this day
+                        same_day_vars = [
+                            var for var in class_vars
+                            if (var["date"].strftime("%Y-%m-%d") == required.date
+                                and var["period"] != required.period)
                         ]
-                    }
-                ))
-        
+                        for var in same_day_vars:
+                            context.model.Add(var["variable"] == 0)
+
+    def validate(self, assignments: List[ScheduleAssignment], context: SchedulerContext) -> List[str]:
+        """Validate that all required periods are satisfied"""
+        violations = []
+
+        for class_obj in context.request.classes:
+            if not hasattr(class_obj, 'required_periods') or not class_obj.required_periods:
+                continue
+
+            # Get assignments for this class
+            class_assignments = [
+                a for a in assignments if a.classId == class_obj.id
+            ]
+
+            # Check each required period
+            for required in class_obj.required_periods:
+                matching = [
+                    a for a in class_assignments
+                    if (a.date == required.date
+                        and a.timeSlot.period == required.period)
+                ]
+
+                if not matching:
+                    violations.append(
+                        f"Class {class_obj.id} is missing required assignment "
+                        f"on {required.date} period {required.period}"
+                    )
+
         return violations
 
-class ConflictPeriodsConstraint(BaseConstraint):
-    """Ensures classes are not scheduled during their conflict periods"""
-    
+class ConflictPeriodsConstraint(Constraint):
+    """Prevent assignments to conflicting periods"""
+
     def __init__(self):
-        super().__init__("conflict_periods")
-        
+        super().__init__("Conflict Periods")
+
     def apply(self, context: SchedulerContext) -> None:
-        # No need to add constraints since we only create variables for non-conflicting periods
-        print("Skipping conflict period constraints (handled during variable creation)")
-    
-    def validate(
-        self,
-        assignments: List[Dict[str, Any]],
-        context: SchedulerContext
-    ) -> List[ConstraintViolation]:
-        violations = []
-        
-        # Check each class with conflicts
+        """Add constraints to prevent assignment to conflicting periods"""
         for class_obj in context.request.classes:
-            if not class_obj.weeklySchedule.conflicts:
+            if not class_obj.conflicts:
                 continue
-                
-            # Find this class's assignment
-            assignment = next(
-                (a for a in assignments if a.classId == class_obj.id),
-                None
-            )
-            
-            if not assignment:
-                continue  # Missing assignment will be caught by SingleAssignmentConstraint
-                
-            # Check if assigned time conflicts
-            weekday = datetime.fromisoformat(assignment.date).weekday() + 1
-            period = assignment.timeSlot.period
-            
-            conflicts = [
-                conflict for conflict in class_obj.weeklySchedule.conflicts
-                if conflict.dayOfWeek == weekday and conflict.period == period
+
+            # Get all variables for this class
+            class_vars = [
+                var for var in context.variables 
+                if var["classId"] == class_obj.id
             ]
-            
-            if conflicts:
-                violations.append(ConstraintViolation(
-                    message=(
-                        f"Class {class_obj.id} scheduled during conflict period "
-                        f"day {weekday} period {period}"
-                    ),
-                    severity="error",
-                    context={
-                        "classId": class_obj.id,
-                        "assignedDay": weekday,
-                        "assignedPeriod": period,
-                        "conflicts": [
-                            {"day": c.dayOfWeek, "period": c.period}
-                            for c in conflicts
-                        ]
-                    }
-                ))
-        
+
+            # Prevent assignment to any conflicting periods
+            for var in class_vars:
+                weekday = var["date"].weekday() + 1  # Convert to 1-5 for Monday-Friday
+                conflicts = [
+                    c for c in class_obj.conflicts
+                    if c.dayOfWeek == weekday and c.period == var["period"]
+                ]
+                if conflicts:
+                    context.model.Add(var["variable"] == 0)
+
+    def validate(self, assignments: List[ScheduleAssignment], context: SchedulerContext) -> List[str]:
+        """Validate that no assignments violate conflicts"""
+        violations = []
+
+        for class_obj in context.request.classes:
+            if not class_obj.conflicts:
+                continue
+
+            # Check each assignment against conflicts
+            class_assignments = [
+                a for a in assignments if a.classId == class_obj.id
+            ]
+
+            for assignment in class_assignments:
+                conflicts = [
+                    c for c in class_obj.conflicts
+                    if (c.dayOfWeek == assignment.timeSlot.dayOfWeek
+                        and c.period == assignment.timeSlot.period)
+                ]
+
+                if conflicts:
+                    violations.append(
+                        f"Class {class_obj.id} is assigned to conflicting period "
+                        f"on day {assignment.timeSlot.dayOfWeek} "
+                        f"period {assignment.timeSlot.period}"
+                    )
+
         return violations

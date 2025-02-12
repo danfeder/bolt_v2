@@ -2,14 +2,87 @@ import type {
   Class, 
   ScheduleAssignment, 
   ScheduleConstraints, 
-  TeacherAvailability,
+  InstructorAvailability,
   ScheduleMetadata 
 } from '../types';
 import type { ComparisonResult } from '../store/types';
 
+interface WeightConfig {
+  final_week_compression: number;
+  day_usage: number;
+  daily_balance: number;
+  preferred_periods: number;
+  distribution: number;
+  avoid_periods: number;
+  earlier_dates: number;
+}
+
+class ApiClient {
+  private baseUrl: string;
+
+  constructor() {
+    this.baseUrl = import.meta.env.PROD 
+      ? '/api'  // Production URL
+      : 'http://localhost:8000';  // FastAPI development URL
+  }
+
+  async generateSchedule(
+    classes: Class[],
+    instructorAvailability: InstructorAvailability[],
+    constraints: ScheduleConstraints,
+    version: SchedulerVersion = 'stable'
+  ): Promise<{ assignments: ScheduleAssignment[]; metadata: ScheduleResponse['metadata'] }> {
+    return generateScheduleWithOrTools(classes, instructorAvailability, constraints, version);
+  }
+
+  async compareSchedules(
+    classes: Class[],
+    instructorAvailability: InstructorAvailability[],
+    constraints: ScheduleConstraints
+  ): Promise<ComparisonResult> {
+    return compareScheduleSolvers(classes, instructorAvailability, constraints);
+  }
+
+  async updateSolverConfig(weights: WeightConfig): Promise<{ current_weights: WeightConfig }> {
+    const response = await fetch(`${this.baseUrl}/solver/config`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ weights }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.detail || data.message || 'Failed to update solver configuration');
+    }
+    
+    const result = await response.json();
+    return result;
+  }
+  async resetSolverConfig(): Promise<{ current_weights: WeightConfig }> {
+    const response = await fetch(`${this.baseUrl}/solver/config/reset`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.detail || data.message || 'Failed to reset solver configuration');
+    }
+    
+    const result = await response.json();
+    return result;
+  }
+}
+
+export const apiClient = new ApiClient();
+
 interface ScheduleRequest {
   classes: Class[];
-  teacherAvailability: TeacherAvailability[];
+  instructorAvailability: InstructorAvailability[];
   startDate: string;
   endDate: string;
   constraints: {
@@ -38,20 +111,20 @@ interface ValidationError {
 }
 
 const SCHEDULER_URL = import.meta.env.PROD 
-  ? '/api'  // Production URL (will update with Render URL)
+  ? '/api'  // Production URL
   : 'http://localhost:8000';  // FastAPI development URL
 
 type SchedulerVersion = 'stable' | 'dev';
 
 export async function generateScheduleWithOrTools(
   classes: Class[],
-  teacherAvailability: TeacherAvailability[],
+  instructorAvailability: InstructorAvailability[],
   constraints: ScheduleConstraints,
   version: SchedulerVersion = 'stable'
 ): Promise<{ assignments: ScheduleAssignment[]; metadata: ScheduleResponse['metadata'] }> {
   const request: ScheduleRequest = {
     classes,
-    teacherAvailability,
+    instructorAvailability,
     startDate: constraints.startDate,
     endDate: constraints.endDate,
     constraints: {
@@ -80,14 +153,24 @@ export async function generateScheduleWithOrTools(
     const data = await response.json();
 
     if (!response.ok) {
-      if (response.status === 422 && 'errors' in data) {
-        const validationError = data as ValidationError;
-        const errorMessage = validationError.errors
-          .map(err => `${err.location}: ${err.message}`)
-          .join('\n');
-        throw new Error(`Validation error:\n${errorMessage}`);
+      // Handle validation errors
+      if (response.status === 422) {
+        const validationError = data;
+        if (Array.isArray(validationError)) {
+          const errorMessage = validationError
+            .map(err => err.msg || err.message || JSON.stringify(err))
+            .join('\n');
+          throw new Error(`Validation errors:\n${errorMessage}`);
+        } else if (validationError.detail) {
+          throw new Error(validationError.detail);
+        }
       }
       throw new Error(data.detail || data.message || 'Failed to generate schedule');
+    }
+
+    // Ensure we have a valid response structure
+    if (!data.assignments || !data.metadata) {
+      throw new Error('Invalid response format from server');
     }
 
     return {
@@ -102,12 +185,12 @@ export async function generateScheduleWithOrTools(
 
 export async function compareScheduleSolvers(
   classes: Class[],
-  teacherAvailability: TeacherAvailability[],
+  instructorAvailability: InstructorAvailability[],
   constraints: ScheduleConstraints
 ): Promise<ComparisonResult> {
   const request: ScheduleRequest = {
     classes,
-    teacherAvailability,
+    instructorAvailability,
     startDate: constraints.startDate,
     endDate: constraints.endDate,
     constraints: {

@@ -44,14 +44,44 @@ def get_base_objectives() -> List[Objective]:
         DistributionObjective(),        # weight=1000
     ]
 
-# Priority weights for different types of constraints/objectives
-WEIGHTS = {
-    'required_periods': 10000,        # Highest priority - required periods must be satisfied
+from typing import Dict
+
+# Required periods are handled as hard constraints and are not configurable
+REQUIRED_PERIODS_ENABLED = True
+
+# Default priority weights for different types of constraints/objectives
+DEFAULT_WEIGHTS = {
     'final_week_compression': 3000,   # High priority for final week optimization
     'day_usage': 2000,               # Encourage using all available days
     'daily_balance': 1500,           # Balance number of classes per day
     'preferred_periods': 1000,        # Medium priority - try to use preferred periods
-    'distribution': 1000,             # Balance the period distribution (increased from 500)
+    'distribution': 1000,             # Balance the period distribution
     'avoid_periods': -500,            # Penalty for using avoided periods
     'earlier_dates': 10,             # Slight preference for earlier dates
 }
+
+# Example of how to use required periods in constraints:
+# 
+# class RequiredPeriodsConstraint(Constraint):
+#     def apply(self, context: SchedulerContext) -> None:
+#         """Add hard constraint for required periods"""
+#         if not REQUIRED_PERIODS_ENABLED:
+#             return
+#
+#         for class_obj in context.request.classes:
+#             for required in class_obj.required_periods:
+#                 # Force assignment to required period
+#                 context.model.Add(context.get_variable(class_obj.id, required.date, required.period) == 1)
+
+# Current weights that can be modified at runtime
+WEIGHTS = DEFAULT_WEIGHTS.copy()
+
+def update_weights(new_weights: Dict[str, int]) -> None:
+    """Update solver weights at runtime"""
+    global WEIGHTS
+    WEIGHTS.update(new_weights)
+
+def reset_weights() -> None:
+    """Reset weights to default values"""
+    global WEIGHTS
+    WEIGHTS = DEFAULT_WEIGHTS.copy()
