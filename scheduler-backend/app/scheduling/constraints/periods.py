@@ -2,6 +2,7 @@
 from typing import List
 from ..core import Constraint, SchedulerContext
 from ...models import ScheduleAssignment
+from ...utils.date_utils import to_utc_isoformat
 
 class RequiredPeriodsConstraint(Constraint):
     """Enforce required periods as hard constraints"""
@@ -24,7 +25,7 @@ class RequiredPeriodsConstraint(Constraint):
                     # Find matching variable for this required period
                     matching_vars = [
                         var for var in class_vars
-                        if (var["date"].strftime("%Y-%m-%d") == required.date
+                        if (to_utc_isoformat(var["date"]) == required.date
                             and var["period"] == required.period)
                     ]
                     
@@ -35,8 +36,8 @@ class RequiredPeriodsConstraint(Constraint):
                         # Prevent assignment to any other periods on this day
                         same_day_vars = [
                             var for var in class_vars
-                            if (var["date"].strftime("%Y-%m-%d") == required.date
-                                and var["period"] != required.period)
+                        if (to_utc_isoformat(var["date"]) == required.date
+                            and var["period"] != required.period)
                         ]
                         for var in same_day_vars:
                             context.model.Add(var["variable"] == 0)

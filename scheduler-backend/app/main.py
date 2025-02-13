@@ -84,6 +84,11 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
 async def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
     try:
         response = stable_solver.create_schedule(request)
+        # Convert assignment date strings to UTC ISO 8601 format
+        from datetime import datetime
+        from app.utils.date_utils import to_utc_isoformat
+        for assignment in response.assignments:
+            assignment.date = to_utc_isoformat(datetime.fromisoformat(assignment.date))
         # Validate response before returning
         return ScheduleResponse(
             assignments=response.assignments,
@@ -113,6 +118,11 @@ async def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
 async def create_schedule_dev(request: ScheduleRequest) -> ScheduleResponse:
     try:
         response = dev_solver.create_schedule(request)
+        # Convert assignment date strings to UTC ISO 8601 format
+        from datetime import datetime
+        from app.utils.date_utils import to_utc_isoformat
+        for assignment in response.assignments:
+            assignment.date = to_utc_isoformat(datetime.fromisoformat(assignment.date))
         # Validate response before returning
         return ScheduleResponse(
             assignments=response.assignments,
@@ -144,6 +154,12 @@ async def compare_solvers(request: ScheduleRequest) -> Dict[str, Any]:
         # Validate and create schedules
         stable_response = stable_solver.create_schedule(request)
         dev_response = dev_solver.create_schedule(request)
+        from datetime import datetime
+        from app.utils.date_utils import to_utc_isoformat
+        for assignment in stable_response.assignments:
+            assignment.date = to_utc_isoformat(datetime.fromisoformat(assignment.date))
+        for assignment in dev_response.assignments:
+            assignment.date = to_utc_isoformat(datetime.fromisoformat(assignment.date))
         
         comparison = dev_solver.compare_with_stable(
             stable_response,

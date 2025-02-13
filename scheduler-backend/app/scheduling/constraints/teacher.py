@@ -72,3 +72,37 @@ class InstructorAvailabilityConstraint(BaseConstraint):
                 ))
         
         return violations
+
+
+class TeacherLoadConstraint(BaseConstraint):
+    """Ensures a teacher does not exceed maximum classes per day and per week."""
+    
+    def __init__(self, max_classes_per_day: int = 3, max_classes_per_week: int = 12):
+        super().__init__("teacher_load")
+        self.max_classes_per_day = max_classes_per_day
+        self.max_classes_per_week = max_classes_per_week
+
+    def apply(self, context: SchedulerContext) -> None:
+        from collections import defaultdict
+        teacher_daily = defaultdict(list)
+        teacher_weekly = defaultdict(list)
+        # Group variables by teacher and day, and teacher and week (using ISO week number)
+        for var in context.variables:
+            teacher = var.get("teacher")
+            if teacher:
+                day = var["date"].date()
+                teacher_daily[(teacher, day)].append(var["variable"])
+                week = var["date"].isocalendar()[1]
+                teacher_weekly[(teacher, week)].append(var["variable"])
+        # Add constraints for daily limits
+        for (teacher, day), variables in teacher_daily.items():
+            context.model.Add(sum(variables) <= self.max_classes_per_day)
+        # Add constraints for weekly limits
+        for (teacher, week), variables in teacher_weekly.items():
+            context.model.Add(sum(variables) <= self.max_classes_per_week)
+        print("Added teacher load constraints")
+    
+    def validate(self, assignments: List[Dict[str, Any]], context: SchedulerContext) -> List[ConstraintViolation]:
+        violations = []
+        # Placeholder: add logic to validate teacher load constraints if needed
+        return violations
