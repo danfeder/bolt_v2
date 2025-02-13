@@ -28,6 +28,19 @@ class SchedulerContext:
         self.end_date = end_date
         self.variables: List[Dict[str, Any]] = []
         self.debug_info: Dict[str, Any] = {}
+        
+        # Index classes by name for quick lookup
+        self.classes_by_name = {
+            c.name: c for c in request.classes
+        }
+        
+        # Index instructor availability by date
+        self.instructor_unavailable = {}
+        for avail in request.instructorAvailability:
+            date_str = avail.date.strftime('%Y-%m-%d')
+            if date_str not in self.instructor_unavailable:
+                self.instructor_unavailable[date_str] = set()
+            self.instructor_unavailable[date_str].update(avail.periods)
 
 class Constraint(Protocol):
     """Protocol defining the interface for scheduler constraints"""

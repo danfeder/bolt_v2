@@ -45,7 +45,7 @@ class FinalWeekCompressionObjective(BaseObjective):
                         # Scale penalty by day number (0 for Monday, increasing for later days)
                         day_penalty = context.model.NewIntVar(
                             -1000, 0, 
-                            f"final_week_day_penalty_d{day_num}_c{var['classId']}"
+                            f"final_week_day_penalty_d{day_num}_c{var['name']}"
                         )
                         # Penalty increases for later days
                         context.model.Add(

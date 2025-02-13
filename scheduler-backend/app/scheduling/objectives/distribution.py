@@ -14,19 +14,24 @@ from ...models import ScheduleAssignment
 class DistributionMetrics:
     """Tracks distribution metrics for schedule analysis"""
     classes_per_week: Dict[int, int]
-    classes_per_period: Dict[str, Dict[int, int]]
-    teacher_periods: Dict[str, Dict[str, int]]
+    classes_per_period: Dict[str, Dict[str, int]]  # Changed inner Dict key to str
+    class_periods: Dict[str, Dict[str, int]]
     week_variance: float
     period_spread: Dict[str, float]
-    teacher_load_variance: Dict[str, float]
+    class_load_variance: Dict[str, float]
     distribution_score: float
+
+    @property
+    def teacher_load_variance(self) -> Dict[str, float]:
+        # For backward compatibility. Previously, workload variance was referred to as teacher_load_variance.
+        return self.class_load_variance
 
 class DistributionObjective(BaseObjective):
     """
     Objective function for optimizing schedule distribution:
     1. Even distribution across weeks
     2. Even distribution within days
-    3. Balanced teacher workload
+    3. Balanced class workload
     """
     
     def __init__(self):
@@ -104,21 +109,21 @@ class DistributionObjective(BaseObjective):
                         context.model.Add(penalty <= 50 * deviation)
                         terms.append(penalty)
         
-        # Group variables by teacher (using class ID as proxy)
-        by_teacher = defaultdict(lambda: defaultdict(list))
+        # Group variables by class
+        by_class = defaultdict(lambda: defaultdict(list))
         for var in context.variables:
             date = var["date"].date()
-            by_teacher[var["classId"]][date].append(var)
+            by_class[var["name"]][date].append(var)
         
-        # Create teacher workload distribution terms
-        for teacher_vars in by_teacher.values():
-            for date, day_vars in teacher_vars.items():
-                # Sum of assignments for this teacher on this day
+        # Create class workload distribution terms
+        for class_vars in by_class.values():
+            for date, day_vars in class_vars.items():
+                # Sum of assignments for this class on this day
                 day_sum = sum(var["variable"] for var in day_vars)
                 # Penalty increases with number of classes
                 penalty = context.model.NewIntVar(
                     -1000, 0,
-                    f"teacher_penalty_{date}"
+                    f"class_penalty_{date}"
                 )
                 context.model.Add(penalty == -250 * day_sum)
                 terms.append(penalty)
@@ -140,7 +145,7 @@ class DistributionObjective(BaseObjective):
         """Calculate distribution metrics for assigned schedule"""
         classes_per_week = defaultdict(int)
         classes_per_period = defaultdict(lambda: defaultdict(int))
-        teacher_periods = defaultdict(lambda: defaultdict(int))
+        class_periods = defaultdict(lambda: defaultdict(int))
         
         print("\nCalculating distribution metrics...")
         print(f"Total assignments: {len(assignments)}")
@@ -151,7 +156,7 @@ class DistributionObjective(BaseObjective):
                 # Parse the ISO format date string into a datetime object
                 date = datetime.fromisoformat(assignment.date)
                 period = assignment.timeSlot.period
-                class_id = assignment.classId
+                class_name = assignment.name
                 
                 # Calculate week number using datetime objects
                 week_num = (date - context.start_date).days // 7
@@ -159,12 +164,13 @@ class DistributionObjective(BaseObjective):
                 
                 # Use date string for dictionary keys
                 date_str = date.date().isoformat()
+                period_str = str(period)  # Convert period to string
                 
                 # Daily distribution
-                classes_per_period[date_str][period] += 1
-                teacher_periods[date_str][class_id] += 1
+                classes_per_period[date_str][period_str] += 1  # Use string key
+                class_periods[date_str][class_name] += 1
                 
-                print(f"Processed assignment: date={date_str}, period={period}, class={class_id}, week={week_num}")
+                print(f"Processed assignment: date={date_str}, period={period_str}, class={class_name}, week={week_num}")
                 
             except Exception as e:
                 print(f"Error processing assignment: {assignment}")
@@ -186,7 +192,8 @@ class DistributionObjective(BaseObjective):
         # Calculate period spread for each day
         period_spread = {}
         for date_str, periods in classes_per_period.items():
-            counts = [periods[p] for p in range(1, 9)]
+            # Convert period numbers to strings when accessing
+            counts = [periods.get(str(p), 0) for p in range(1, 9)]
             variance = (
                 statistics.variance(counts)
                 if len(counts) > 1
@@ -196,11 +203,11 @@ class DistributionObjective(BaseObjective):
             max_variance = 4.0  # Theoretical maximum
             period_spread[date_str] = 1.0 - min(variance / max_variance, 1.0)
         
-        # Calculate teacher load variance for each day
-        teacher_load_variance = {}
-        for date_str, loads in teacher_periods.items():
+        # Calculate class load variance for each day
+        class_load_variance = {}
+        for date_str, loads in class_periods.items():
             counts = list(loads.values())
-            teacher_load_variance[date_str] = (
+            class_load_variance[date_str] = (
                 statistics.variance(counts)
                 if len(counts) > 1
                 else 0.0
@@ -211,8 +218,8 @@ class DistributionObjective(BaseObjective):
         for date_str in classes_per_period.keys():
             # Penalize poor period spread
             spread_penalty = -200 * (1.0 - period_spread[date_str])
-            # Penalize teacher load imbalance
-            load_penalty = -150 * teacher_load_variance.get(date_str, 0.0)
+            # Penalize class load imbalance
+            load_penalty = -150 * class_load_variance.get(date_str, 0.0)
             total_score += spread_penalty + load_penalty
         
         # Penalize weekly variance
@@ -225,9 +232,9 @@ class DistributionObjective(BaseObjective):
         return DistributionMetrics(
             classes_per_week=dict(classes_per_week),
             classes_per_period=dict(classes_per_period),
-            teacher_periods=dict(teacher_periods),
+            class_periods=dict(class_periods),
             week_variance=week_variance,
             period_spread=dict(period_spread),
-            teacher_load_variance=dict(teacher_load_variance),
+            class_load_variance=dict(class_load_variance),
             distribution_score=total_score
         )

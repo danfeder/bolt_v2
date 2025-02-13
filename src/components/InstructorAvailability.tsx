@@ -2,15 +2,12 @@ import React from 'react';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, addWeeks, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { useScheduleStore } from '../store/scheduleStore';
-import type { TimeSlot } from '../types';
 
 const PERIODS = Array.from({ length: 8 }, (_, i) => i + 1);
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 
-type SlotState = 'blank' | 'unavailable' | 'preferred' | 'avoid';
-
-export const TeacherAvailability: React.FC = () => {
-  const { setTeacherAvailability, teacherAvailability } = useScheduleStore();
+export const InstructorAvailability: React.FC = () => {
+  const { setInstructorAvailability, instructorAvailability } = useScheduleStore();
   const [currentWeek, setCurrentWeek] = React.useState(new Date());
   
   const weekDates = React.useMemo(() => {
@@ -19,81 +16,43 @@ export const TeacherAvailability: React.FC = () => {
     return eachDayOfInterval({ start, end }).slice(0, 5); // Monday to Friday
   }, [currentWeek]);
 
-  const getSlotState = (date: Date, period: number): SlotState => {
+  const isUnavailable = (date: Date, period: number): boolean => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    const dayAvailability = teacherAvailability.find(a => a.date === dateStr);
-    
-    if (!dayAvailability) return 'blank';
-
-    if (dayAvailability.unavailableSlots.some(slot => 
-      slot.dayOfWeek === date.getDay() && slot.period === period
-    )) {
-      return 'unavailable';
-    }
-
-    if (dayAvailability.preferredSlots.some(slot => 
-      slot.dayOfWeek === date.getDay() && slot.period === period
-    )) {
-      return 'preferred';
-    }
-
-    if (dayAvailability.avoidSlots.some(slot => 
-      slot.dayOfWeek === date.getDay() && slot.period === period
-    )) {
-      return 'avoid';
-    }
-
-    return 'blank';
+    const dayAvailability = instructorAvailability.find(a => a.date === dateStr);
+    return dayAvailability?.periods.includes(period) || false;
   };
 
   const toggleSlot = (date: Date, period: number) => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    const dayOfWeek = date.getDay();
-    const newSlot: TimeSlot = { dayOfWeek, period };
-    const currentState = getSlotState(date, period);
+    const isCurrentlyUnavailable = isUnavailable(date, period);
 
-    setTeacherAvailability(prev => {
+    setInstructorAvailability(prev => {
       const currentAvailability = [...prev];
       const dayIndex = currentAvailability.findIndex(a => a.date === dateStr);
       
       // Initialize day if it doesn't exist
       if (dayIndex === -1) {
-        return [...currentAvailability, {
-          date: dateStr,
-          unavailableSlots: currentState === 'blank' ? [newSlot] : [],
-          preferredSlots: [],
-          avoidSlots: []
-        }];
+        if (!isCurrentlyUnavailable) {
+          return [...currentAvailability, {
+            date: dateStr,
+            periods: [period]
+          }];
+        }
+        return currentAvailability;
       }
 
       const day = { ...currentAvailability[dayIndex] };
-
-      // Update slots based on current state
-      switch (currentState) {
-        case 'blank':
-          // Blank → Unavailable
-          day.unavailableSlots = [...day.unavailableSlots, newSlot];
-          break;
-        case 'unavailable':
-          // Unavailable → Preferred
-          day.unavailableSlots = day.unavailableSlots.filter(
-            s => !(s.dayOfWeek === dayOfWeek && s.period === period)
-          );
-          day.preferredSlots = [...day.preferredSlots, newSlot];
-          break;
-        case 'preferred':
-          // Preferred → Avoid
-          day.preferredSlots = day.preferredSlots.filter(
-            s => !(s.dayOfWeek === dayOfWeek && s.period === period)
-          );
-          day.avoidSlots = [...day.avoidSlots, newSlot];
-          break;
-        case 'avoid':
-          // Avoid → Blank
-          day.avoidSlots = day.avoidSlots.filter(
-            s => !(s.dayOfWeek === dayOfWeek && s.period === period)
-          );
-          break;
+      
+      if (isCurrentlyUnavailable) {
+        // Remove period from unavailable list
+        day.periods = day.periods.filter(p => p !== period);
+        // If no periods left, remove the day entry
+        if (day.periods.length === 0) {
+          return currentAvailability.filter(a => a.date !== dateStr);
+        }
+      } else {
+        // Add period to unavailable list
+        day.periods = [...day.periods, period];
       }
 
       return [
@@ -136,8 +95,6 @@ export const TeacherAvailability: React.FC = () => {
           <span className="inline-flex items-center gap-2 ml-2">
             <span className="w-4 h-4 bg-gray-50 rounded"></span> Available
             <span className="w-4 h-4 bg-red-100 rounded"></span> Unavailable
-            <span className="w-4 h-4 bg-green-100 rounded"></span> Preferred
-            <span className="w-4 h-4 bg-purple-100 rounded"></span> Avoid
           </span>
         </p>
       </div>
@@ -169,12 +126,8 @@ export const TeacherAvailability: React.FC = () => {
                   >
                     <div
                       className={`w-full h-8 rounded cursor-pointer transition-colors ${
-                        getSlotState(date, period) === 'unavailable'
+                        isUnavailable(date, period)
                           ? 'bg-red-100 hover:bg-red-200'
-                          : getSlotState(date, period) === 'preferred'
-                          ? 'bg-green-100 hover:bg-green-200'
-                          : getSlotState(date, period) === 'avoid'
-                          ? 'bg-purple-100 hover:bg-purple-200'
                           : 'bg-gray-50 hover:bg-gray-100'
                       }`}
                     />

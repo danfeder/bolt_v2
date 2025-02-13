@@ -16,10 +16,10 @@ class SingleAssignmentConstraint(BaseConstraint):
         # Group variables by class
         by_class = defaultdict(list)
         for var in context.variables:
-            by_class[var["classId"]].append(var["variable"])
+            by_class[var["name"]].append(var["variable"])
         
         # Add constraint for each class
-        for class_id, vars_list in by_class.items():
+        for class_name, vars_list in by_class.items():
             context.model.Add(sum(vars_list) == 1)
             
         print(f"Added single assignment constraints for {len(by_class)} classes")
@@ -34,23 +34,23 @@ class SingleAssignmentConstraint(BaseConstraint):
         # Count assignments per class using property access
         assignments_per_class = defaultdict(int)
         for assignment in assignments:
-            assignments_per_class[assignment.classId] += 1
+            assignments_per_class[assignment.name] += 1
         
         # Check for missing or duplicate assignments
         for class_obj in context.request.classes:
-            count = assignments_per_class[class_obj.id]
+            count = assignments_per_class[class_obj.name]
             if count == 0:
                 violations.append(ConstraintViolation(
-                    message=f"Class {class_obj.id} is not scheduled",
+                    message=f"Class {class_obj.name} is not scheduled",
                     severity="error",
-                    context={"classId": class_obj.id}
+                    context={"name": class_obj.name}
                 ))
             elif count > 1:
                 violations.append(ConstraintViolation(
-                    message=f"Class {class_obj.id} is scheduled {count} times",
+                    message=f"Class {class_obj.name} is scheduled {count} times",
                     severity="error",
                     context={
-                        "classId": class_obj.id,
+                        "name": class_obj.name,
                         "assignmentCount": count
                     }
                 ))
@@ -95,14 +95,14 @@ class NoOverlapConstraint(BaseConstraint):
         # Check for overlaps
         for (date, period), slot_assignments in by_slot.items():
             if len(slot_assignments) > 1:
-                class_ids = [a.classId for a in slot_assignments]
+                class_names = [a.name for a in slot_assignments]
                 violations.append(ConstraintViolation(
                     message=f"Multiple classes scheduled for {date} period {period}",
                     severity="error",
                     context={
                         "date": date,
                         "period": period,
-                        "classIds": class_ids
+                        "names": class_names
                     }
                 ))
         

@@ -57,7 +57,7 @@ export interface WeeklyDistributionMetrics {
 
 export interface DailyDistributionMetrics {
   periodSpread: number;
-  teacherLoadVariance: number;
+  classLoadVariance: number;  // renamed from teacherLoadVariance
   classesByPeriod: Record<string, number>;
 }
 

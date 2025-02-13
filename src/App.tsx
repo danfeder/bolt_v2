@@ -1,17 +1,17 @@
 import React from 'react';
 import { Calendar } from './components/Calendar';
 import { FileUpload } from './components/FileUpload';
-import { TeacherAvailability } from './components/TeacherAvailability';
+import { InstructorAvailability } from './components/InstructorAvailability';
 import { ConstraintsForm } from './components/ConstraintsForm';
 import { ClassEditor } from './components/ClassEditor';
 import { ScheduleDebugPanel } from './components/ScheduleDebugPanel';
 import { SolverConfig } from './components/SolverConfig';
 import { useScheduleStore } from './store/scheduleStore';
 import { Calendar as CalendarIcon, AlertCircle, Play, Settings } from 'lucide-react';
-import { testClasses, testTeacherAvailability } from './store/testData';
+import { testClasses, testInstructorAvailability } from './store/testData';
 
 function App() {
-  const { classes, generateSchedule, setClasses, setTeacherAvailability } = useScheduleStore();
+  const { classes, generateSchedule, setClasses, setInstructorAvailability } = useScheduleStore();
   const [error, setError] = React.useState<string | null>(null);
   const [showConfig, setShowConfig] = React.useState(false);
 
@@ -26,7 +26,7 @@ function App() {
 
   const loadTestData = () => {
     setClasses(testClasses);
-    setTeacherAvailability(testTeacherAvailability);
+    setInstructorAvailability(testInstructorAvailability);
   };
 
   return (
@@ -65,7 +65,7 @@ function App() {
           <ClassEditor />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <TeacherAvailability />
+            <InstructorAvailability />
             <ConstraintsForm />
           </div>
 

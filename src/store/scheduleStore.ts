@@ -4,7 +4,7 @@ import type {
   Class, 
   ScheduleAssignment, 
   ScheduleConstraints, 
-  TeacherAvailability,
+  InstructorAvailability,
   ScheduleMetadata 
 } from '../types';
 import type { ComparisonResult } from './types';
@@ -13,7 +13,7 @@ import { generateScheduleWithOrTools, compareScheduleSolvers } from '../lib/apiC
 
 interface ScheduleState {
   classes: Class[];
-  teacherAvailability: TeacherAvailability[];
+  instructorAvailability: InstructorAvailability[];
   assignments: ScheduleAssignment[];
   constraints: ScheduleConstraints;
   isGenerating: boolean;
@@ -25,7 +25,7 @@ interface ScheduleState {
   isComparing: boolean;
   error: string | null;
   setClasses: (classes: Class[]) => void;
-  setTeacherAvailability: (availability: TeacherAvailability[] | ((prev: TeacherAvailability[]) => TeacherAvailability[])) => void;
+  setInstructorAvailability: (availability: InstructorAvailability[] | ((prev: InstructorAvailability[]) => InstructorAvailability[])) => void;
   setConstraints: (constraints: Partial<ScheduleConstraints>) => void;
   setSchedulerVersion: (version: 'stable' | 'dev') => void;
   generateSchedule: () => Promise<void>;
@@ -49,7 +49,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
 
   return {
     classes: [],
-    teacherAvailability: [],
+    instructorAvailability: [],
     assignments: [],
     constraints: defaultConstraints,
     isGenerating: false,
@@ -63,10 +63,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
     
     setClasses: (classes: Class[]) => set({ classes }),
     
-    setTeacherAvailability: (availability: TeacherAvailability[] | ((prev: TeacherAvailability[]) => TeacherAvailability[])) => 
+    setInstructorAvailability: (availability: InstructorAvailability[] | ((prev: InstructorAvailability[]) => InstructorAvailability[])) => 
       set((state) => ({ 
-        teacherAvailability: typeof availability === 'function' 
-          ? availability(state.teacherAvailability)
+        instructorAvailability: typeof availability === 'function' 
+          ? availability(state.instructorAvailability)
           : availability 
       })),
     
@@ -78,7 +78,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
     setSchedulerVersion: (version: 'stable' | 'dev') => set({ schedulerVersion: version }),
     
     generateSchedule: async () => {
-      const { classes, teacherAvailability, constraints, schedulerVersion } = get();
+      const { classes, instructorAvailability, constraints, schedulerVersion } = get();
       
       if (classes.length === 0) {
         set({ error: 'No classes to schedule. Please add classes first.' });
@@ -94,7 +94,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
       set({ error: null });
 
       // Analyze schedule complexity and choose solver
-      const decision = analyzeScheduleComplexity(classes, teacherAvailability, constraints);
+      const decision = analyzeScheduleComplexity(classes, instructorAvailability, constraints);
       set({ solverDecision: decision });
 
       set({ isGenerating: true, generationProgress: 0 });
@@ -103,7 +103,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
         // Use Python backend solver via API
         const result = await generateScheduleWithOrTools(
           classes,
-          teacherAvailability,
+          instructorAvailability,
           constraints,
           schedulerVersion
         );
@@ -126,7 +126,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
     },
 
     compareVersions: async () => {
-      const { classes, teacherAvailability, constraints } = get();
+      const { classes, instructorAvailability, constraints } = get();
       
       if (classes.length === 0) {
         set({ error: 'No classes to schedule. Please add classes first.' });
@@ -139,7 +139,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
       try {
         const result = await compareScheduleSolvers(
           classes,
-          teacherAvailability,
+          instructorAvailability,
           constraints
         );
 

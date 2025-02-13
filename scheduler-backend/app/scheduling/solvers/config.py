@@ -1,9 +1,9 @@
 """Common solver configurations and constants"""
-from typing import List
+from typing import List, Dict
 
 # Constraints
 from ..constraints.assignment import SingleAssignmentConstraint, NoOverlapConstraint
-from ..constraints.teacher import TeacherAvailabilityConstraint
+from ..constraints.instructor import InstructorAvailabilityConstraint
 from ..constraints.periods import RequiredPeriodsConstraint, ConflictPeriodsConstraint
 from ..constraints.limits import (
     DailyLimitConstraint, 
@@ -26,7 +26,7 @@ def get_base_constraints() -> List[Constraint]:
     return [
         SingleAssignmentConstraint(),
         NoOverlapConstraint(),
-        TeacherAvailabilityConstraint(),
+        InstructorAvailabilityConstraint(),
         RequiredPeriodsConstraint(),
         ConflictPeriodsConstraint(),
         DailyLimitConstraint(),
@@ -44,11 +44,6 @@ def get_base_objectives() -> List[Objective]:
         DistributionObjective(),        # weight=1000
     ]
 
-from typing import Dict
-
-# Required periods are handled as hard constraints and are not configurable
-REQUIRED_PERIODS_ENABLED = True
-
 # Default priority weights for different types of constraints/objectives
 DEFAULT_WEIGHTS = {
     'final_week_compression': 3000,   # High priority for final week optimization
@@ -59,19 +54,6 @@ DEFAULT_WEIGHTS = {
     'avoid_periods': -500,            # Penalty for using avoided periods
     'earlier_dates': 10,             # Slight preference for earlier dates
 }
-
-# Example of how to use required periods in constraints:
-# 
-# class RequiredPeriodsConstraint(Constraint):
-#     def apply(self, context: SchedulerContext) -> None:
-#         """Add hard constraint for required periods"""
-#         if not REQUIRED_PERIODS_ENABLED:
-#             return
-#
-#         for class_obj in context.request.classes:
-#             for required in class_obj.required_periods:
-#                 # Force assignment to required period
-#                 context.model.Add(context.get_variable(class_obj.id, required.date, required.period) == 1)
 
 # Current weights that can be modified at runtime
 WEIGHTS = DEFAULT_WEIGHTS.copy()

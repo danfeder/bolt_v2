@@ -177,7 +177,7 @@ class WeeklyDistributionMetrics(BaseModel):
 class DailyDistributionMetrics(BaseModel):
     periodSpread: float
     teacherLoadVariance: float
-    classesByPeriod: Dict[str, int]
+    classesByPeriod: Dict[str, int]  # Using str keys for period numbers
 
 class DistributionMetrics(BaseModel):
     weekly: WeeklyDistributionMetrics

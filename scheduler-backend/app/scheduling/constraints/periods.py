@@ -15,11 +15,11 @@ class RequiredPeriodsConstraint(Constraint):
             # Look for variables matching this class
             class_vars = [
                 var for var in context.variables 
-                if var["classId"] == class_obj.id
+                if var["name"] == class_obj.name
             ]
 
-            # If this class has required periods, enforce them
-            if hasattr(class_obj, 'required_periods') and class_obj.required_periods:
+            # Handle required periods if present
+            if class_obj.required_periods:
                 for required in class_obj.required_periods:
                     # Find matching variable for this required period
                     matching_vars = [
@@ -46,12 +46,12 @@ class RequiredPeriodsConstraint(Constraint):
         violations = []
 
         for class_obj in context.request.classes:
-            if not hasattr(class_obj, 'required_periods') or not class_obj.required_periods:
+            if not class_obj.required_periods:
                 continue
 
             # Get assignments for this class
             class_assignments = [
-                a for a in assignments if a.classId == class_obj.id
+                a for a in assignments if a.name == class_obj.name
             ]
 
             # Check each required period
@@ -64,7 +64,7 @@ class RequiredPeriodsConstraint(Constraint):
 
                 if not matching:
                     violations.append(
-                        f"Class {class_obj.id} is missing required assignment "
+                        f"Class {class_obj.name} is missing required assignment "
                         f"on {required.date} period {required.period}"
                     )
 
@@ -85,7 +85,7 @@ class ConflictPeriodsConstraint(Constraint):
             # Get all variables for this class
             class_vars = [
                 var for var in context.variables 
-                if var["classId"] == class_obj.id
+                if var["name"] == class_obj.name
             ]
 
             # Prevent assignment to any conflicting periods
@@ -108,7 +108,7 @@ class ConflictPeriodsConstraint(Constraint):
 
             # Check each assignment against conflicts
             class_assignments = [
-                a for a in assignments if a.classId == class_obj.id
+                a for a in assignments if a.name == class_obj.name
             ]
 
             for assignment in class_assignments:
@@ -120,7 +120,7 @@ class ConflictPeriodsConstraint(Constraint):
 
                 if conflicts:
                     violations.append(
-                        f"Class {class_obj.id} is assigned to conflicting period "
+                        f"Class {class_obj.name} is assigned to conflicting period "
                         f"on day {assignment.timeSlot.dayOfWeek} "
                         f"period {assignment.timeSlot.period}"
                     )

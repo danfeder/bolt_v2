@@ -11,10 +11,8 @@ class RequiredPeriodsObjective(BaseObjective):
     """
     Objective function prioritizing:
     1. Required period assignments (highest priority)
-    2. Preferred period assignments (weighted by class preference)
-    3. Avoiding certain periods (weighted by class avoidance)
-    4. Early scheduling in last week (medium priority)
-    5. Earlier dates (lowest priority)
+    2. Early scheduling in last week (medium priority)
+    3. Earlier dates (lowest priority)
     """
     
     def __init__(self):
@@ -30,49 +28,29 @@ class RequiredPeriodsObjective(BaseObjective):
         # Add early scheduling variables from context
         early_vars = context.debug_info.get("early_scheduling_vars", [])
         for var in early_vars:
-            # Weight of 5000 puts this between required periods (10000) and preferred periods (1000)
+            # Weight of 5000 puts this between required periods (10000) and other objectives
             terms.append(5000 * var)
         
         for var in context.variables:
             # Get class object for this variable
             class_obj = next(
                 c for c in context.request.classes 
-                if c.id == var["classId"]
+                if c.name == var["name"]
             )
-            weekday = var["date"].weekday() + 1
+            
+            # Convert variable's date to date string
+            date_str = var["date"].date().isoformat()
             period = var["period"]
             
             # Check if this is a required period
             is_required = any(
-                rp.dayOfWeek == weekday and rp.period == period
-                for rp in class_obj.weeklySchedule.requiredPeriods
+                rp.date == date_str and rp.period == period
+                for rp in class_obj.required_periods
             )
             
             if is_required:
                 # Large reward for required periods (highest priority)
                 terms.append(10000 * var["variable"])
-                
-            # Check if this is a preferred period
-            is_preferred = any(
-                pp.dayOfWeek == weekday and pp.period == period
-                for pp in class_obj.weeklySchedule.preferredPeriods
-            )
-            
-            if is_preferred:
-                # Reward for preferred periods (weighted by class preference)
-                weight = int(1000 * class_obj.weeklySchedule.preferenceWeight)
-                terms.append(weight * var["variable"])
-                
-            # Check if this is an avoid period
-            is_avoided = any(
-                ap.dayOfWeek == weekday and ap.period == period
-                for ap in class_obj.weeklySchedule.avoidPeriods
-            )
-            
-            if is_avoided:
-                # Penalty for avoided periods (weighted by class avoidance)
-                weight = int(-500 * class_obj.weeklySchedule.avoidanceWeight)
-                terms.append(weight * var["variable"])
                 
             # Small reward for earlier dates (lowest priority)
             days_from_start = (var["date"] - start_date).days

@@ -12,7 +12,9 @@ from ...models import (
     ScheduleAssignment, 
     TimeSlot,
     ScheduleMetadata,
-    DistributionMetrics
+    DistributionMetrics,
+    WeeklyDistributionMetrics,
+    DailyDistributionMetrics
 )
 from dateutil.tz import UTC
 
@@ -179,18 +181,22 @@ class BaseSolver:
             )
             if distribution_obj and hasattr(distribution_obj, "calculate_metrics"):
                 metrics = distribution_obj.calculate_metrics(assignments, context)
+                
+                # Convert classesPerWeek keys to strings
+                classes_per_week_str = {str(k): v for k, v in metrics.classes_per_week.items()}
+                
                 distribution_metrics = DistributionMetrics(
-                    weekly={
-                        "variance": metrics.week_variance,
-                        "classesPerWeek": metrics.classes_per_week,
-                        "score": -100 * metrics.week_variance  # Penalize variance
-                    },
+                    weekly=WeeklyDistributionMetrics(
+                        variance=metrics.week_variance,
+                        classesPerWeek=classes_per_week_str,
+                        score=-100 * metrics.week_variance  # Penalize variance
+                    ),
                     daily={
-                        date: {
-                            "periodSpread": spread,
-                            "teacherLoadVariance": metrics.teacher_load_variance.get(date, 0.0),
-                            "classesByPeriod": metrics.classes_per_period.get(date, {})
-                        }
+                        date: DailyDistributionMetrics(
+                            periodSpread=spread,
+                            teacherLoadVariance=metrics.teacher_load_variance.get(date, 0.0),
+                            classesByPeriod=dict(metrics.classes_per_period.get(date, {}))  # Already string keys
+                        )
                         for date, spread in metrics.period_spread.items()
                     },
                     totalScore=metrics.distribution_score
