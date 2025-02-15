@@ -1,4 +1,4 @@
-from .stable import StableSolver
-from .dev import DevSolver
+from .solver import UnifiedSolver
+from .config import config, update_weights, reset_weights
 
-__all__ = ['StableSolver', 'DevSolver']
+__all__ = ['UnifiedSolver', 'config', 'update_weights', 'reset_weights']

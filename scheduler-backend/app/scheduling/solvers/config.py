@@ -1,5 +1,7 @@
 """Common solver configurations and constants"""
-from typing import List, Dict
+from dataclasses import dataclass, field
+import os
+from typing import Dict, List
 
 # Constraints
 from ..constraints.assignment import SingleAssignmentConstraint, NoOverlapConstraint
@@ -20,6 +22,41 @@ from ..objectives.daily_balance import DailyBalanceObjective
 
 # Base Types
 from ..core import Constraint, Objective
+
+@dataclass
+class SolverConfig:
+    """Configuration for the unified solver"""
+    
+    # Feature flags
+    ENABLE_METRICS: bool = field(default=False)
+    ENABLE_SOLUTION_COMPARISON: bool = field(default=False)
+    ENABLE_EXPERIMENTAL_DISTRIBUTION: bool = field(default=False)
+    
+    # Optimization parameters
+    TIME_LIMIT_SECONDS: int = field(default=300)  # 5 minutes default
+    OPTIMIZATION_TOLERANCE: float = field(default=0.01)
+    
+    # Weights for different optimization objectives
+    WEIGHTS: Dict[str, int] = field(default_factory=lambda: {
+        'final_week_compression': 3000,   # High priority for final week optimization
+        'day_usage': 2000,               # Encourage using all available days
+        'daily_balance': 1500,           # Balance number of classes per day
+        'preferred_periods': 1000,        # Medium priority - try to use preferred periods
+        'distribution': 1000,             # Balance the period distribution
+        'avoid_periods': -500,            # Penalty for using avoided periods
+        'earlier_dates': 10,             # Slight preference for earlier dates
+    })
+
+    @classmethod
+    def from_env(cls) -> 'SolverConfig':
+        """Create configuration from environment variables"""
+        return cls(
+            ENABLE_METRICS=os.getenv('ENABLE_METRICS', '0') == '1',
+            ENABLE_SOLUTION_COMPARISON=os.getenv('ENABLE_SOLUTION_COMPARISON', '0') == '1',
+            ENABLE_EXPERIMENTAL_DISTRIBUTION=os.getenv('ENABLE_EXPERIMENTAL_DISTRIBUTION', '0') == '1',
+            TIME_LIMIT_SECONDS=int(os.getenv('SOLVER_TIME_LIMIT', '300')),
+            OPTIMIZATION_TOLERANCE=float(os.getenv('OPTIMIZATION_TOLERANCE', '0.01')),
+        )
 
 def get_base_constraints() -> List[Constraint]:
     """Get the common constraints used by all solvers"""
@@ -44,26 +81,13 @@ def get_base_objectives() -> List[Objective]:
         DistributionObjective(),        # weight=1000
     ]
 
-# Default priority weights for different types of constraints/objectives
-DEFAULT_WEIGHTS = {
-    'final_week_compression': 3000,   # High priority for final week optimization
-    'day_usage': 2000,               # Encourage using all available days
-    'daily_balance': 1500,           # Balance number of classes per day
-    'preferred_periods': 1000,        # Medium priority - try to use preferred periods
-    'distribution': 1000,             # Balance the period distribution
-    'avoid_periods': -500,            # Penalty for using avoided periods
-    'earlier_dates': 10,             # Slight preference for earlier dates
-}
-
-# Current weights that can be modified at runtime
-WEIGHTS = DEFAULT_WEIGHTS.copy()
+# Global instance
+config = SolverConfig()
 
 def update_weights(new_weights: Dict[str, int]) -> None:
     """Update solver weights at runtime"""
-    global WEIGHTS
-    WEIGHTS.update(new_weights)
+    config.WEIGHTS.update(new_weights)
 
 def reset_weights() -> None:
     """Reset weights to default values"""
-    global WEIGHTS
-    WEIGHTS = DEFAULT_WEIGHTS.copy()
+    config.WEIGHTS = SolverConfig().WEIGHTS.copy()

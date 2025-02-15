@@ -143,22 +143,22 @@ Keep an eye on whether your project truly needs this distribution or if it’s a
 
 ## Summary of Key Recommendations
 
-1. **Merge stable & dev solvers** into one solver code path, toggling features by config or environment variables.  
-2. **Centralize constraint logic** with a “ConstraintManager” (and an analogous “ObjectiveManager”) to reduce repeated code.  
-3. **Keep a single configuration file** for all weight definitions and solver toggles.  
+1. ✅ **Merge stable & dev solvers** into one solver code path, toggling features by config or environment variables.  
+2. ✅ **Centralize constraint logic** with a "ConstraintManager" (and an analogous "ObjectiveManager") to reduce repeated code.  
+3. ✅ **Keep a single configuration file** for all weight definitions and solver toggles.  
 4. **Simplify the frontend** with a more guided flow or a tab-based approach, and rely on a single global store (Zustand).  
 5. **Clean up tests** to keep them either very small (for each constraint) or truly end-to-end (for the entire scheduling run).  
-6. **Improve documentation** with one main README describing how the code is structured, how to add constraints, and how the solver is run.  
-7. **Remove or archive legacy code** that duplicates functionality or is no longer needed.
+6. ✅ **Improve documentation** with one main README describing how the code is structured, how to add constraints, and how the solver is run.  
+7. ✅ **Remove or archive legacy code** that duplicates functionality or is no longer needed.
 
 ---
 
 ## Implementation Roadmap (Actionable Checklist)
 
 ### Phase 1 - Backend Refactor (Weeks 1-3)
-- [ ] **Solver Consolidation**
-  - [ ] Create unified `solver.py` by merging logic from `stable.py` and `dev.py`
-  - [ ] Implement feature flag system in `scheduler-backend/app/scheduling/solvers/config.py`:
+- [x] **Solver Consolidation**
+  - [x] Create unified `solver.py` by merging logic from `stable.py` and `dev.py`
+  - [x] Implement feature flag system in `scheduler-backend/app/scheduling/solvers/config.py`:
     ```python
     from dataclasses import dataclass, field
     import os
@@ -180,12 +180,12 @@ Keep an eye on whether your project truly needs this distribution or if it’s a
                 USE_PARALLEL_CONSTRAINTS=os.getenv('PARALLEL_CONSTRAINTS', '1') == '1'
             )
     ```
-  - [ ] Archive legacy solver files (`stable.py` and `dev.py`) into a `legacy/` folder or branch.
+  - [x] Archive legacy solver files (`stable.py` and `dev.py`) into a `legacy/` folder or branch.
 
-- [ ] **Constraint System**
-  - [ ] Create a `BaseConstraint` abstract class in `scheduler-backend/app/scheduling/constraints/base.py`
-  - [ ] Develop `ConstraintManager` to load and apply constraints in a consistent order.
-  - [ ] Refactor existing constraints to inherit from `BaseConstraint` and remove redundant code.
+- [x] **Constraint System**
+  - [x] Create a `BaseConstraint` abstract class in `scheduler-backend/app/scheduling/constraints/base.py`
+  - [x] Develop `ConstraintManager` to load and apply constraints in a consistent order.
+  - [x] Refactor existing constraints to inherit from `BaseConstraint` and remove redundant code.
 
 ### Phase 2 - Frontend Simplification (Week 4)
 - [ ] **Tabbed Interface Implementation**

@@ -7,12 +7,32 @@ from .base import BaseConstraint, ConstraintViolation
 from ..core import SchedulerContext
 
 class SingleAssignmentConstraint(BaseConstraint):
-    """Ensures each class is scheduled exactly once"""
+    """
+    Ensures each class is scheduled exactly once.
     
-    def __init__(self):
-        super().__init__("single_assignment")
+    This is a fundamental constraint that:
+    1. Requires every class to be assigned to exactly one time slot
+    2. Prevents any class from being scheduled multiple times
+    
+    Priority is set to 0 (highest) as this is a core scheduling requirement.
+    """
+    
+    def __init__(self, enabled: bool = True):
+        super().__init__(
+            name="single_assignment",
+            enabled=enabled,
+            priority=0,  # Highest priority as this is a fundamental constraint
+            weight=None  # Use default from config
+        )
     
     def apply(self, context: SchedulerContext) -> None:
+        """
+        Apply single assignment constraints to the CP-SAT model.
+        Creates sum(vars) == 1 constraint for each class.
+        """
+        if not self.enabled:
+            return
+            
         # Group variables by class
         by_class = defaultdict(list)
         for var in context.variables:
@@ -24,7 +44,7 @@ class SingleAssignmentConstraint(BaseConstraint):
             
         print(f"Added single assignment constraints for {len(by_class)} classes")
     
-    def validate(
+    def _validate_impl(
         self,
         assignments: List[Dict[str, Any]],
         context: SchedulerContext
@@ -58,12 +78,33 @@ class SingleAssignmentConstraint(BaseConstraint):
         return violations
 
 class NoOverlapConstraint(BaseConstraint):
-    """Ensures no two classes are scheduled in the same period"""
+    """
+    Ensures no two classes are scheduled in the same time slot.
     
-    def __init__(self):
-        super().__init__("no_overlap")
+    This constraint prevents scheduling conflicts by:
+    1. Ensuring each time slot (date + period) has at most one class
+    2. Adding constraints only when multiple classes could be scheduled in a slot
+    
+    Priority is set to 0 (highest) as this is a core scheduling requirement.
+    """
+    
+    def __init__(self, enabled: bool = True):
+        super().__init__(
+            name="no_overlap",
+            enabled=enabled,
+            priority=0,  # Highest priority as this is a fundamental constraint
+            weight=None  # Use default from config
+        )
     
     def apply(self, context: SchedulerContext) -> None:
+        """
+        Apply no-overlap constraints to the CP-SAT model.
+        Creates sum(vars) <= 1 constraint for each time slot that
+        could have multiple classes.
+        """
+        if not self.enabled:
+            return
+            
         # Group variables by date and period
         by_slot = defaultdict(list)
         for var in context.variables:
@@ -79,7 +120,7 @@ class NoOverlapConstraint(BaseConstraint):
                 
         print(f"Added {overlap_constraints} no-overlap constraints")
     
-    def validate(
+    def _validate_impl(
         self,
         assignments: List[Dict[str, Any]],
         context: SchedulerContext
