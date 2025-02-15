@@ -1,17 +1,20 @@
-import { create } from 'zustand';
+import { create, StateCreator } from 'zustand';
 import { addDays } from 'date-fns';
 import type { 
   Class, 
   ScheduleAssignment, 
   ScheduleConstraints, 
   InstructorAvailability,
-  ScheduleMetadata 
+  ScheduleMetadata,
+  SchedulerTab,
+  TabState,
+  TabValidationState
 } from '../types';
 import type { ComparisonResult } from './types';
 import { analyzeScheduleComplexity, type SolverDecision } from '../lib/scheduleComplexity';
 import { generateScheduleWithOrTools, compareScheduleSolvers } from '../lib/apiClient';
 
-interface ScheduleState {
+interface ScheduleState extends TabState {
   classes: Class[];
   instructorAvailability: InstructorAvailability[];
   assignments: ScheduleAssignment[];
@@ -24,7 +27,11 @@ interface ScheduleState {
   comparisonResult: ComparisonResult | null;
   isComparing: boolean;
   error: string | null;
+  tabValidation: TabValidationState;
   setClasses: (classes: Class[]) => void;
+  setCurrentTab: (tab: SchedulerTab) => void;
+  validateTab: (tab: SchedulerTab) => boolean;
+  markTabComplete: (tab: SchedulerTab) => void;
   setInstructorAvailability: (availability: InstructorAvailability[] | ((prev: InstructorAvailability[]) => InstructorAvailability[])) => void;
   setConstraints: (constraints: Partial<ScheduleConstraints>) => void;
   setSchedulerVersion: (version: 'stable' | 'dev') => void;
@@ -33,6 +40,12 @@ interface ScheduleState {
   cancelGeneration: () => void;
   clearError: () => void;
 }
+
+const defaultTabValidation: TabValidationState = {
+  setup: false,
+  visualize: false,
+  debug: false
+};
 
 const defaultConstraints: ScheduleConstraints = {
   maxClassesPerDay: 4,
@@ -44,12 +57,36 @@ const defaultConstraints: ScheduleConstraints = {
   endDate: addDays(new Date(), 30).toISOString()
 };
 
-export const useScheduleStore = create<ScheduleState>((set, get) => {
+export const useScheduleStore = create<ScheduleState>((
+  set: (
+    partial: ScheduleState | Partial<ScheduleState> | ((state: ScheduleState) => ScheduleState | Partial<ScheduleState>),
+    replace?: boolean
+  ) => void,
+  get: () => ScheduleState
+) => {
+  const validateTab = (tab: SchedulerTab): boolean => {
+    const state = get();
+    switch (tab) {
+      case 'setup':
+        return state.classes.length > 0 && state.instructorAvailability.length > 0;
+      case 'visualize':
+        return state.assignments.length > 0;
+      case 'debug':
+        return state.lastGenerationMetadata !== null;
+      default:
+        return false;
+    }
+  };
+
   let worker: Worker | null = null;
 
   return {
     classes: [],
     instructorAvailability: [],
+    currentTab: 'setup' as SchedulerTab,
+    setupComplete: false,
+    visualizationReady: false,
+    tabValidation: defaultTabValidation,
     assignments: [],
     constraints: defaultConstraints,
     isGenerating: false,
@@ -64,14 +101,14 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
     setClasses: (classes: Class[]) => set({ classes }),
     
     setInstructorAvailability: (availability: InstructorAvailability[] | ((prev: InstructorAvailability[]) => InstructorAvailability[])) => 
-      set((state) => ({ 
+      set((state: ScheduleState) => ({ 
         instructorAvailability: typeof availability === 'function' 
           ? availability(state.instructorAvailability)
           : availability 
       })),
     
     setConstraints: (newConstraints: Partial<ScheduleConstraints>) => 
-      set((state) => ({
+      set((state: ScheduleState) => ({
         constraints: { ...state.constraints, ...newConstraints }
       })),
 
@@ -165,6 +202,31 @@ export const useScheduleStore = create<ScheduleState>((set, get) => {
       }
     },
 
-    clearError: () => set({ error: null })
+    clearError: () => set({ error: null }),
+
+    setCurrentTab: (tab: SchedulerTab) => {
+      const isValid = validateTab(tab);
+      set({ 
+        currentTab: tab,
+        tabValidation: {
+          ...get().tabValidation,
+          [tab]: isValid
+        }
+      });
+    },
+
+    validateTab,
+
+    markTabComplete: (tab: SchedulerTab) => {
+      const isValid = validateTab(tab);
+      set((state: ScheduleState) => ({
+        tabValidation: {
+          ...state.tabValidation,
+          [tab]: isValid
+        },
+        setupComplete: tab === 'setup' ? isValid : state.setupComplete,
+        visualizationReady: tab === 'visualize' ? isValid : state.visualizationReady
+      }));
+    }
   };
 });

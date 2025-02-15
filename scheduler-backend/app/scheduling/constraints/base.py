@@ -1,12 +1,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
-from datetime import datetime
 
 from ortools.sat.python import cp_model
 
-from ..core import Constraint, SchedulerContext
-from ..solvers.config import config
+from ..core import ConstraintManager, Constraint, SchedulerContext, config
 
 @dataclass
 class ConstraintViolation:
@@ -87,36 +85,3 @@ class BaseConstraint(ABC):
         Override this in constraint subclasses.
         """
         return []
-
-class ConstraintManager:
-    """
-    Manages and applies a collection of constraints in a consistent order.
-    """
-    def __init__(self):
-        self._constraints: List[BaseConstraint] = []
-        
-    def add_constraint(self, constraint: BaseConstraint) -> None:
-        """Add a constraint to be managed"""
-        self._constraints.append(constraint)
-        # Sort by priority after adding
-        self._constraints.sort(key=lambda c: c.priority)
-        
-    def get_enabled_constraints(self) -> List[BaseConstraint]:
-        """Get all currently enabled constraints"""
-        return [c for c in self._constraints if c.enabled]
-        
-    def apply_all(self, context: SchedulerContext) -> None:
-        """Apply all enabled constraints in priority order"""
-        for constraint in self.get_enabled_constraints():
-            constraint.apply(context)
-            
-    def validate_all(
-        self,
-        assignments: List[Dict[str, Any]],
-        context: SchedulerContext
-    ) -> List[ConstraintViolation]:
-        """Validate assignments against all enabled constraints"""
-        violations = []
-        for constraint in self.get_enabled_constraints():
-            violations.extend(constraint.validate(assignments, context))
-        return violations

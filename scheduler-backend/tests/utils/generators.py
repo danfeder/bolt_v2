@@ -156,12 +156,15 @@ class ScheduleRequestGenerator:
         if start_date is None:
             start_date = datetime.now()
         if constraints is None:
+            end_date = start_date + timedelta(weeks=num_weeks)
             constraints = ScheduleConstraints(
                 maxClassesPerDay=3,
                 maxClassesPerWeek=8,
                 minPeriodsPerWeek=1,
                 maxConsecutiveClasses=1,
-                consecutiveClassesRule="hard"
+                consecutiveClassesRule="hard",
+                startDate=start_date.strftime("%Y-%m-%d"),
+                endDate=end_date.strftime("%Y-%m-%d")
             )
             
         end_date = start_date + timedelta(weeks=num_weeks)

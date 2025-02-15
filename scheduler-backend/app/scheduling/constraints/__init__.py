@@ -1,4 +1,5 @@
-from .base import BaseConstraint, ConstraintViolation, ConstraintManager
+from .base import BaseConstraint, ConstraintViolation
+from ..core import ConstraintManager
 from .assignment import SingleAssignmentConstraint, NoOverlapConstraint
 from .instructor import InstructorAvailabilityConstraint
 from .periods import RequiredPeriodsConstraint, ConflictPeriodsConstraint

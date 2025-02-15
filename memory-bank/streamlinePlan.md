@@ -146,7 +146,7 @@ Keep an eye on whether your project truly needs this distribution or if it’s a
 1. ✅ **Merge stable & dev solvers** into one solver code path, toggling features by config or environment variables.  
 2. ✅ **Centralize constraint logic** with a "ConstraintManager" (and an analogous "ObjectiveManager") to reduce repeated code.  
 3. ✅ **Keep a single configuration file** for all weight definitions and solver toggles.  
-4. **Simplify the frontend** with a more guided flow or a tab-based approach, and rely on a single global store (Zustand).  
+4. ✅ **Simplify the frontend** with a guided, tab-based workflow using a single global store (Zustand).  
 5. **Clean up tests** to keep them either very small (for each constraint) or truly end-to-end (for the entire scheduling run).  
 6. ✅ **Improve documentation** with one main README describing how the code is structured, how to add constraints, and how the solver is run.  
 7. ✅ **Remove or archive legacy code** that duplicates functionality or is no longer needed.
@@ -188,10 +188,10 @@ Keep an eye on whether your project truly needs this distribution or if it’s a
   - [x] Refactor existing constraints to inherit from `BaseConstraint` and remove redundant code.
 
 ### Phase 2 - Frontend Simplification (Week 4)
-- [ ] **Tabbed Interface Implementation**
-  - [ ] Create tab state management in `src/store/scheduleStore.ts`
-  - [ ] Implement a guided workflow component (Wizard/Setup flow)
-  - [ ] Migrate existing components to a tab-based structure using React Router or a custom tabs component.
+- [x] **Tabbed Interface Implementation**
+  - [x] Create tab state management in `src/store/scheduleStore.ts`
+  - [x] Implement a guided workflow component (Wizard/Setup flow) via TabContainer
+  - [x] Migrate existing components to a tab-based structure
 
 ### Phase 3 - Testing & Validation (Week 5)
 - [ ] **Modular Testing Strategy**

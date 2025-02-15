@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Dict, Any, Protocol
+from typing import List, Dict, Any, Protocol, Optional
 from ortools.sat.python import cp_model
 
 from ..models import (
@@ -36,8 +36,8 @@ class SchedulerContext:
         
         # Index instructor availability by date
         self.instructor_unavailable = {}
-        for avail in request.instructorAvailability:
-            date_str = avail.date.strftime('%Y-%m-%d')
+        for avail in request.teacherAvailability:
+            date_str = avail.date  # date is already a string in YYYY-MM-DD format
             if date_str not in self.instructor_unavailable:
                 self.instructor_unavailable[date_str] = set()
             self.instructor_unavailable[date_str].update(avail.periods)
@@ -98,6 +98,34 @@ class SchedulerMetrics:
     solutions_found: int
     optimization_gap: float
 
+# Default constraint weights
+DEFAULT_WEIGHTS = {
+    "single_assignment": 10000,
+    "no_overlap": 10000,
+    "required_periods": 8000,
+    "instructor_availability": 7000,
+    "conflict_periods": 6000,
+    "consecutive_classes": 5000,
+    "class_limits": 4000,
+    "avoid_periods": -2000,
+    "preferred_periods": 1000
+}
+
+class SolverConfig:
+    """Configuration for solver behavior and weights"""
+    def __init__(self):
+        self.WEIGHTS = DEFAULT_WEIGHTS.copy()
+        self.ENABLE_METRICS = True
+        self.ENABLE_SOLUTION_COMPARISON = True
+        self.ENABLE_EXPERIMENTAL_DISTRIBUTION = False
+
+# Global config instance
+config = SolverConfig()
+
+def get_config() -> SolverConfig:
+    """Get the global solver configuration"""
+    return config
+
 class SolverCallback(cp_model.CpSolverSolutionCallback):
     """Base callback class for logging solver progress"""
     def __init__(self):
@@ -129,3 +157,37 @@ class SolverCallback(cp_model.CpSolverSolutionCallback):
             
             self._last_log_time = current_time
             self._last_log_count = self._solutions
+
+class ConstraintManager:
+    """
+    Manages and applies a collection of constraints in a consistent order.
+    """
+    def __init__(self):
+        self._constraints: List[Constraint] = []
+        
+    def add_constraint(self, constraint: Constraint) -> None:
+        """Add a constraint to be managed"""
+        self._constraints.append(constraint)
+        # Sort by priority after adding
+        self._constraints.sort(key=lambda c: getattr(c, 'priority', 1))
+        
+    def get_enabled_constraints(self) -> List[Constraint]:
+        """Get all currently enabled constraints"""
+        return [c for c in self._constraints if getattr(c, 'enabled', True)]
+        
+    def apply_all(self, context: SchedulerContext) -> None:
+        """Apply all enabled constraints in priority order"""
+        for constraint in self.get_enabled_constraints():
+            constraint.apply(context)
+            
+    def validate_all(
+        self,
+        assignments: List[Dict[str, Any]],
+        context: SchedulerContext
+    ) -> List[Any]:  # Returns List[ConstraintViolation] but avoiding circular import
+        """Validate assignments against all enabled constraints"""
+        violations = []
+        for constraint in self.get_enabled_constraints():
+            if hasattr(constraint, 'validate'):
+                violations.extend(constraint.validate(assignments, context))
+        return violations

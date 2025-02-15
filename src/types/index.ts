@@ -76,3 +76,18 @@ export interface SolverWeights {
   avoid_periods: number;
   earlier_dates: number;
 }
+
+// New interfaces for tabbed interface
+export type SchedulerTab = 'setup' | 'visualize' | 'debug';
+
+export interface TabState {
+  currentTab: SchedulerTab;
+  setupComplete: boolean;
+  visualizationReady: boolean;
+}
+
+export interface TabValidationState {
+  setup: boolean;
+  visualize: boolean;
+  debug: boolean;
+}

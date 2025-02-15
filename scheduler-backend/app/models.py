@@ -15,6 +15,44 @@ class TimeSlot(BaseModel):
         }
     }
 
+class WeeklySchedule(BaseModel):
+    conflicts: List[TimeSlot] = []
+    preferredPeriods: List[TimeSlot] = []
+    requiredPeriods: List[TimeSlot] = []
+    avoidPeriods: List[TimeSlot] = []
+    preferenceWeight: float = Field(default=1.5)
+    avoidanceWeight: float = Field(default=1.2)
+    
+    model_config = {
+        'json_schema_extra': {
+            "example": {
+                "conflicts": [],
+                "preferredPeriods": [],
+                "requiredPeriods": [],
+                "avoidPeriods": [],
+                "preferenceWeight": 1.5,
+                "avoidanceWeight": 1.2
+            }
+        }
+    }
+
+class TeacherAvailability(BaseModel):
+    date: str
+    unavailableSlots: List[TimeSlot] = []
+    preferredSlots: List[TimeSlot] = []
+    avoidSlots: List[TimeSlot] = []
+    
+    model_config = {
+        'json_schema_extra': {
+            "example": {
+                "date": "2025-02-12",
+                "unavailableSlots": [],
+                "preferredSlots": [],
+                "avoidSlots": []
+            }
+        }
+    }
+
 class RequiredPeriod(BaseModel):
     date: str
     period: int = Field(..., ge=1, le=8)
@@ -42,21 +80,23 @@ class ConflictPeriod(BaseModel):
     }
 
 class Class(BaseModel):
+    id: str = Field(..., description="Unique identifier for the class")
     name: str
     grade: str = Field(..., description="Grade level (Pre-K through 5)")
-    conflicts: List[ConflictPeriod] = []
-    required_periods: List[RequiredPeriod] = []
+    weeklySchedule: WeeklySchedule = Field(default_factory=WeeklySchedule)
     
     model_config = {
         'json_schema_extra': {
             "example": {
+                "id": "PK207",
                 "name": "PK207",
                 "grade": "Pre-K",
-                "conflicts": [
-                    {"dayOfWeek": 1, "period": 2},
-                    {"dayOfWeek": 2, "period": 3}
-                ],
-                "required_periods": []
+                "weeklySchedule": {
+                    "conflicts": [],
+                    "preferredPeriods": [],
+                    "requiredPeriods": [],
+                    "avoidPeriods": []
+                }
             }
         }
     }
@@ -99,7 +139,7 @@ class ScheduleConstraints(BaseModel):
 
 class ScheduleRequest(BaseModel):
     classes: List[Class]
-    instructorAvailability: List[InstructorAvailability]
+    teacherAvailability: List[TeacherAvailability]
     startDate: str
     endDate: str
     constraints: ScheduleConstraints
@@ -108,7 +148,7 @@ class ScheduleRequest(BaseModel):
         'json_schema_extra': {
             "example": {
                 "classes": [],
-                "instructorAvailability": [],
+                "teacherAvailability": [],
                 "startDate": "2025-02-12",
                 "endDate": "2025-03-14",
                 "constraints": {}
