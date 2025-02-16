@@ -195,7 +195,7 @@ Keep an eye on whether your project truly needs this distribution or if it’s a
 
 ### Phase 3 - Testing & Validation (Week 5)
 - [ ] **Modular Testing Strategy**
-  - [ ] Develop a test harness for isolated constraint testing in `scheduler-backend/tests/utils/constraint_harness.py`
+  - [x] Develop a test harness for isolated constraint testing in `scheduler-backend/tests/utils/constraint_harness.py`
   - [ ] Create unit tests for each constraint class.
   - [ ] Ensure full integration testing using `Schedule_From_Json_Corrected.csv` to validate end-to-end functionality.
 

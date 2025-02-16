@@ -54,7 +54,7 @@ class SingleAssignmentConstraint(BaseConstraint):
         # Count assignments per class using property access
         assignments_per_class = defaultdict(int)
         for assignment in assignments:
-            assignments_per_class[assignment.name] += 1
+            assignments_per_class[assignment['name']] += 1
         
         # Check for missing or duplicate assignments
         for class_obj in context.request.classes:
@@ -130,13 +130,13 @@ class NoOverlapConstraint(BaseConstraint):
         # Group assignments by time slot
         by_slot = defaultdict(list)
         for assignment in assignments:
-            key = (assignment.date, assignment.timeSlot.period)
+            key = (assignment['date'], assignment['timeSlot']['period'])
             by_slot[key].append(assignment)
         
         # Check for overlaps
         for (date, period), slot_assignments in by_slot.items():
             if len(slot_assignments) > 1:
-                class_names = [a.name for a in slot_assignments]
+                class_names = [a['name'] for a in slot_assignments]
                 violations.append(ConstraintViolation(
                     message=f"Multiple classes scheduled for {date} period {period}",
                     severity="error",
