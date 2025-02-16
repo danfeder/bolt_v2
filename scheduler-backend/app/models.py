@@ -36,23 +36,6 @@ class WeeklySchedule(BaseModel):
         }
     }
 
-class TeacherAvailability(BaseModel):
-    date: str
-    unavailableSlots: List[TimeSlot] = []
-    preferredSlots: List[TimeSlot] = []
-    avoidSlots: List[TimeSlot] = []
-    
-    model_config = {
-        'json_schema_extra': {
-            "example": {
-                "date": "2025-02-12",
-                "unavailableSlots": [],
-                "preferredSlots": [],
-                "avoidSlots": []
-            }
-        }
-    }
-
 class RequiredPeriod(BaseModel):
     date: str
     period: int = Field(..., ge=1, le=8)
@@ -104,12 +87,18 @@ class Class(BaseModel):
 class InstructorAvailability(BaseModel):
     date: datetime
     periods: List[int] = Field(..., description="List of periods when the instructor is unavailable")
+    unavailableSlots: List[TimeSlot] = []
+    preferredSlots: List[TimeSlot] = []
+    avoidSlots: List[TimeSlot] = []
     
     model_config = {
         'json_schema_extra': {
             "example": {
                 "date": "2025-02-12T00:00:00",
-                "periods": [1, 2, 3]
+                "periods": [1, 2, 3],
+                "unavailableSlots": [],
+                "preferredSlots": [],
+                "avoidSlots": []
             }
         }
     }
@@ -139,7 +128,7 @@ class ScheduleConstraints(BaseModel):
 
 class ScheduleRequest(BaseModel):
     classes: List[Class]
-    teacherAvailability: List[TeacherAvailability]
+    instructorAvailability: List[InstructorAvailability]
     startDate: str
     endDate: str
     constraints: ScheduleConstraints
@@ -148,7 +137,7 @@ class ScheduleRequest(BaseModel):
         'json_schema_extra': {
             "example": {
                 "classes": [],
-                "teacherAvailability": [],
+                "instructorAvailability": [],
                 "startDate": "2025-02-12",
                 "endDate": "2025-03-14",
                 "constraints": {}
@@ -216,7 +205,7 @@ class WeeklyDistributionMetrics(BaseModel):
 
 class DailyDistributionMetrics(BaseModel):
     periodSpread: float
-    teacherLoadVariance: float
+    instructorLoadVariance: float  # Changed from teacherLoadVariance
     classesByPeriod: Dict[str, int]  # Using str keys for period numbers
 
 class DistributionMetrics(BaseModel):
@@ -235,7 +224,7 @@ class DistributionMetrics(BaseModel):
                 "daily": {
                     "2025-02-12": {
                         "periodSpread": 0.8,
-                        "teacherLoadVariance": 0.2,
+                        "instructorLoadVariance": 0.2,
                         "classesByPeriod": {"1": 2, "2": 1, "3": 1}
                     }
                 },

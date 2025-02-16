@@ -4,7 +4,7 @@ from app.models import (
     Class,
     TimeSlot,
     WeeklySchedule,
-    TeacherAvailability,
+    InstructorAvailability,
     ScheduleConstraints,
     ScheduleRequest
 )
@@ -99,22 +99,24 @@ class ClassGenerator:
             ))
         return classes
 
-class TeacherAvailabilityGenerator:
+class InstructorAvailabilityGenerator:
     @staticmethod
     def create_availability(
-        date: Optional[str] = None,
+        date: Optional[datetime] = None,
         num_unavailable: int = 1,
         num_preferred: int = 1,
         num_avoid: int = 1
-    ) -> TeacherAvailability:
-        """Create teacher availability for a specific date"""
+    ) -> InstructorAvailability:
+        """Create instructor availability for a specific date"""
         if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
+            date = datetime.now()
             
         all_slots = TimeSlotGenerator.create_sequential_slots(20)
+        periods = list(range(1, num_unavailable + 1))  # First n periods are unavailable
         
-        return TeacherAvailability(
+        return InstructorAvailability(
             date=date,
+            periods=periods,  # Required field for unavailable periods
             unavailableSlots=all_slots[:num_unavailable],
             preferredSlots=all_slots[num_unavailable:num_unavailable + num_preferred],
             avoidSlots=all_slots[num_unavailable + num_preferred:num_unavailable + num_preferred + num_avoid]
@@ -125,8 +127,8 @@ class TeacherAvailabilityGenerator:
         start_date: datetime,
         weeks: int = 1,
         unavailable_pattern: Optional[List[TimeSlot]] = None
-    ) -> List[TeacherAvailability]:
-        """Create teacher availability for multiple weeks"""
+    ) -> List[InstructorAvailability]:
+        """Create instructor availability for multiple weeks"""
         if unavailable_pattern is None:
             # Default to lunch periods (period 5) every day
             unavailable_pattern = TimeSlotGenerator.create_daily_pattern(5)
@@ -136,8 +138,8 @@ class TeacherAvailabilityGenerator:
         
         for _ in range(weeks * 5):  # 5 school days per week
             if current_date.weekday() < 5:  # Only add for weekdays
-                availability.append(TeacherAvailabilityGenerator.create_availability(
-                    date=current_date.strftime("%Y-%m-%d"),
+                availability.append(InstructorAvailabilityGenerator.create_availability(
+                    date=current_date,
                     num_unavailable=len(unavailable_pattern)
                 ))
             current_date += timedelta(days=1)
@@ -171,7 +173,7 @@ class ScheduleRequestGenerator:
         
         return ScheduleRequest(
             classes=ClassGenerator.create_multiple_classes(num_classes),
-            teacherAvailability=TeacherAvailabilityGenerator.create_weekly_availability(
+            instructorAvailability=InstructorAvailabilityGenerator.create_weekly_availability(
                 start_date=start_date,
                 weeks=num_weeks
             ),

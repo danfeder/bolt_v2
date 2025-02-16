@@ -6,7 +6,7 @@ from app.models import (
     Class,
     TimeSlot,
     WeeklySchedule,
-    TeacherAvailability,
+    InstructorAvailability,
     ScheduleConstraints
 )
 
@@ -44,10 +44,12 @@ def base_class(base_weekly_schedule) -> Class:
     )
 
 @pytest.fixture
-def base_teacher_availability(base_time_slots) -> TeacherAvailability:
-    """Basic teacher availability for testing"""
-    return TeacherAvailability(
-        date=datetime.now().strftime("%Y-%m-%d"),
+def base_instructor_availability(base_time_slots) -> InstructorAvailability:
+    """Basic instructor availability for testing"""
+    now = datetime.now()
+    return InstructorAvailability(
+        date=now,
+        periods=[1, 2],  # First two periods unavailable
         unavailableSlots=[base_time_slots[0]],  # Monday first period unavailable
         preferredSlots=[base_time_slots[1]],    # Tuesday second period preferred
         avoidSlots=[base_time_slots[4]]         # Friday fifth period avoid
@@ -61,7 +63,9 @@ def base_schedule_constraints() -> ScheduleConstraints:
         maxClassesPerWeek=8,
         minPeriodsPerWeek=1,
         maxConsecutiveClasses=1,
-        consecutiveClassesRule="hard"
+        consecutiveClassesRule="hard",
+        startDate=datetime.now().strftime("%Y-%m-%d"),
+        endDate=(datetime.now() + timedelta(days=14)).strftime("%Y-%m-%d")
     )
 
 @pytest.fixture
@@ -77,14 +81,14 @@ def date_range():
 @pytest.fixture
 def base_schedule_request(
     base_class,
-    base_teacher_availability,
+    base_instructor_availability,
     base_schedule_constraints,
     date_range
 ) -> ScheduleRequest:
     """Basic schedule request for testing"""
     return ScheduleRequest(
         classes=[base_class],
-        teacherAvailability=[base_teacher_availability],
+        instructorAvailability=[base_instructor_availability],
         startDate=date_range["start"],
         endDate=date_range["end"],
         constraints=base_schedule_constraints

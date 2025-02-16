@@ -1,344 +1,339 @@
 import pytest
 from datetime import datetime, timedelta
-from app.scheduler import create_schedule_dev
-from app.models import (
-    ScheduleRequest,
-    ScheduleConstraints,
-    TimeSlot,
-    WeeklySchedule
+
+from app.scheduling.constraints.assignment import SingleAssignmentConstraint, NoOverlapConstraint
+from app.scheduling.constraints.instructor import (
+    InstructorAvailabilityConstraint, ConsecutivePeriodConstraint, InstructorLoadConstraint
 )
-from tests.utils.generators import (
-    ClassGenerator,
-    TeacherAvailabilityGenerator,
-    TimeSlotGenerator
-)
-from tests.utils.assertions import (
-    assert_valid_assignments,
-    assert_no_overlaps,
-    assert_respects_conflicts,
-    assert_respects_teacher_availability,
-    assert_respects_required_periods,
-    assert_respects_class_limits,
-    assert_respects_consecutive_classes,
-    assert_valid_schedule
-)
+from app.scheduling.constraints.limits import DailyLimitConstraint, WeeklyLimitConstraint, MinimumPeriodsConstraint
+from app.scheduling.constraints.periods import RequiredPeriodsConstraint, ConflictPeriodsConstraint
+from tests.utils.constraint_harness import create_test_harness
+from app.models import ScheduleRequest, Class, TimeSlot
 
-def test_single_assignment():
-    """Test that each class is scheduled exactly once"""
-    # Create a simple schedule request with multiple classes
-    start_date = datetime.now()
-    end_date = start_date + timedelta(days=14)
+class TestAssignmentConstraints:
+    """Tests for assignment-related constraints"""
     
-    request = ScheduleRequest(
-        classes=ClassGenerator.create_multiple_classes(3),
-        teacherAvailability=TeacherAvailabilityGenerator.create_weekly_availability(
-            start_date=start_date,
-            weeks=2
-        ),
-        startDate=start_date.strftime("%Y-%m-%d"),
-        endDate=end_date.strftime("%Y-%m-%d"),
-        constraints=ScheduleConstraints(
-            maxClassesPerDay=3,
-            maxClassesPerWeek=8,
-            minPeriodsPerWeek=1,
-            maxConsecutiveClasses=1,
-            consecutiveClassesRule="hard"
-        )
-    )
-    
-    # Generate schedule
-    response = create_schedule_dev(request)
-    
-    # Verify each class is scheduled exactly once
-    assert_valid_assignments(response, request)
+    def test_single_assignment_success(self):
+        """Test that each class is scheduled exactly once when constraint is applied"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=3, num_weeks=1)
+        
+        constraint = SingleAssignmentConstraint()
+        harness.apply_constraint(constraint, context)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        # Check each class appears exactly once
+        class_counts = {}
+        for assignment in assignments:
+            class_name = assignment["name"]
+            class_counts[class_name] = class_counts.get(class_name, 0) + 1
+            
+        for class_name, count in class_counts.items():
+            assert count == 1, f"Class {class_name} was scheduled {count} times instead of once"
+        
+        assert len(violations) == 0, f"Found unexpected violations: {violations}"
+        
+    def test_single_assignment_violation(self):
+        """Test that violations are detected when classes are scheduled multiple times"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=2, num_weeks=1)
+        
+        # Don't apply the constraint - this should allow multiple assignments
+        constraint = SingleAssignmentConstraint()
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violations when constraint not applied"
+        assert any(v.severity == "error" for v in violations), "Expected at least one error severity violation"
+        
+    def test_no_overlap_success(self):
+        """Test that no two classes are scheduled in the same time slot"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=3, num_weeks=1)
+        
+        constraint = NoOverlapConstraint()
+        harness.apply_constraint(constraint, context)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) == 0, f"Found unexpected violations: {violations}"
+        
+    def test_no_overlap_violation(self):
+        """Test that violations are detected when classes overlap"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=2, num_weeks=1)
+        
+        # Don't apply the constraint - this should allow overlaps
+        constraint = NoOverlapConstraint()
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violations when constraint not applied"
 
-def test_no_overlaps():
-    """Test that no two classes are scheduled at the same time"""
-    # Create classes with overlapping preferences to test conflict resolution
-    start_date = datetime.now()
-    end_date = start_date + timedelta(days=7)
+class TestInstructorConstraints:
+    """Tests for instructor-related constraints"""
     
-    # Create two classes that prefer the same periods
-    preferred_slots = TimeSlotGenerator.create_daily_pattern(2)  # Second period every day
-    classes = [
-        ClassGenerator.create_class(
-            class_id="test-1",
-            weekly_schedule=WeeklySchedule(
-                conflicts=[],
-                preferredPeriods=preferred_slots,
-                requiredPeriods=[],
-                avoidPeriods=[],
-                preferenceWeight=1.5,
-                avoidanceWeight=1.0
-            )
-        ),
-        ClassGenerator.create_class(
-            class_id="test-2",
-            weekly_schedule=WeeklySchedule(
-                conflicts=[],
-                preferredPeriods=preferred_slots,
-                requiredPeriods=[],
-                avoidPeriods=[],
-                preferenceWeight=1.5,
-                avoidanceWeight=1.0
-            )
-        )
-    ]
-    
-    request = ScheduleRequest(
-        classes=classes,
-        teacherAvailability=TeacherAvailabilityGenerator.create_weekly_availability(
-            start_date=start_date,
-            weeks=1
-        ),
-        startDate=start_date.strftime("%Y-%m-%d"),
-        endDate=end_date.strftime("%Y-%m-%d"),
-        constraints=ScheduleConstraints(
-            maxClassesPerDay=3,
-            maxClassesPerWeek=8,
-            minPeriodsPerWeek=1,
-            maxConsecutiveClasses=1,
-            consecutiveClassesRule="hard"
-        )
-    )
-    
-    # Generate schedule
-    response = create_schedule_dev(request)
-    
-    # Verify no overlaps
-    assert_no_overlaps(response)
+    def test_instructor_availability_success(self):
+        """Test that classes are only scheduled during instructor availability"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=2, num_weeks=1)
+        
+        constraint = InstructorAvailabilityConstraint()
+        harness.apply_constraint(constraint, context)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) == 0, f"Found unexpected violations: {violations}"
+        
+    def test_instructor_availability_violation(self):
+        """Test that violations are detected when classes are scheduled outside availability"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=1, num_weeks=1)
+        
+        # Don't apply the constraint
+        constraint = InstructorAvailabilityConstraint()
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violations when constraint not applied"
+        
+    def test_consecutive_period_success(self):
+        """Test that instructors are not scheduled for consecutive periods"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=3, num_weeks=1)
+        
+        constraint = ConsecutivePeriodConstraint()
+        harness.apply_constraint(constraint, context)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) == 0, f"Found unexpected violations: {violations}"
+        
+    def test_consecutive_period_violation(self):
+        """Test that violations are detected when instructors have consecutive periods"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=2, num_weeks=1)
+        
+        # Don't apply the constraint
+        constraint = ConsecutivePeriodConstraint()
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violations when constraint not applied"
 
-def test_respects_conflicts():
-    """Test that classes are not scheduled during their conflict periods"""
-    start_date = datetime.now()
-    end_date = start_date + timedelta(days=7)
-    
-    # Create class with specific conflicts
-    conflict_slots = TimeSlotGenerator.create_daily_pattern(1)  # First period every day
-    classes = [
-        ClassGenerator.create_class(
-            class_id="test-1",
-            weekly_schedule=WeeklySchedule(
-                conflicts=conflict_slots,
-                preferredPeriods=[],
-                requiredPeriods=[],
-                avoidPeriods=[],
-                preferenceWeight=1.0,
-                avoidanceWeight=1.0
-            )
-        )
-    ]
-    
-    request = ScheduleRequest(
-        classes=classes,
-        teacherAvailability=TeacherAvailabilityGenerator.create_weekly_availability(
-            start_date=start_date,
-            weeks=1
-        ),
-        startDate=start_date.strftime("%Y-%m-%d"),
-        endDate=end_date.strftime("%Y-%m-%d"),
-        constraints=ScheduleConstraints(
-            maxClassesPerDay=3,
-            maxClassesPerWeek=8,
-            minPeriodsPerWeek=1,
-            maxConsecutiveClasses=1,
-            consecutiveClassesRule="hard"
-        )
-    )
-    
-    # Generate schedule
-    response = create_schedule_dev(request)
-    
-    # Verify conflicts are respected
-    assert_respects_conflicts(response, request)
+    def test_instructor_load_success(self):
+        """Test that instructors do not exceed maximum classes per day/week"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=5, num_weeks=1)
+        
+        constraint = InstructorLoadConstraint(max_classes_per_day=3, max_classes_per_week=12)
+        harness.apply_constraint(constraint, context)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) == 0, f"Found unexpected violations: {violations}"
+        
+    def test_instructor_load_violation(self):
+        """Test that violations are detected when instructor load limits are exceeded"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=10, num_weeks=1)
+        
+        # Don't apply the constraint - this should allow exceeding the limits
+        constraint = InstructorLoadConstraint(max_classes_per_day=2, max_classes_per_week=8)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violations when constraint not applied"
 
-def test_respects_teacher_availability():
-    """Test that classes are not scheduled during teacher unavailable periods"""
-    start_date = datetime.now()
-    end_date = start_date + timedelta(days=7)
+class TestDailyLimitConstraint:
+    """Tests for daily limit constraints"""
     
-    # Create specific teacher unavailability pattern
-    unavailable_slots = TimeSlotGenerator.create_daily_pattern(4)  # Fourth period every day
-    
-    request = ScheduleRequest(
-        classes=ClassGenerator.create_multiple_classes(2),
-        teacherAvailability=TeacherAvailabilityGenerator.create_weekly_availability(
-            start_date=start_date,
-            weeks=1,
-            unavailable_pattern=unavailable_slots
-        ),
-        startDate=start_date.strftime("%Y-%m-%d"),
-        endDate=end_date.strftime("%Y-%m-%d"),
-        constraints=ScheduleConstraints(
-            maxClassesPerDay=3,
-            maxClassesPerWeek=8,
-            minPeriodsPerWeek=1,
-            maxConsecutiveClasses=1,
-            consecutiveClassesRule="hard"
-        )
-    )
-    
-    # Generate schedule
-    response = create_schedule_dev(request)
-    
-    # Verify teacher availability is respected
-    assert_respects_teacher_availability(response, request)
+    def test_daily_limit_success(self):
+        """Test that class scheduling respects daily limits"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=5, num_weeks=1)
+        
+        constraint = DailyLimitConstraint()
+        harness.apply_constraint(constraint, context)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) == 0, f"Found unexpected violations: {violations}"
+        
+    def test_daily_limit_violation(self):
+        """Test that violations are detected when daily limits are exceeded"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=10, num_weeks=1)
+        
+        # Don't apply the constraint
+        constraint = DailyLimitConstraint()
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violations when constraint not applied"
 
-def test_respects_required_periods():
-    """Test that classes are scheduled in their required periods"""
-    start_date = datetime.now()
-    end_date = start_date + timedelta(days=7)
+class TestWeeklyLimitConstraint:
+    """Tests for weekly limit constraints"""
     
-    # Create class with specific required periods
-    required_slots = [TimeSlot(dayOfWeek=2, period=3)]  # Tuesday third period
-    classes = [
-        ClassGenerator.create_class(
-            class_id="test-1",
-            weekly_schedule=WeeklySchedule(
-                conflicts=[],
-                preferredPeriods=[],
-                requiredPeriods=required_slots,
-                avoidPeriods=[],
-                preferenceWeight=1.0,
-                avoidanceWeight=1.0
-            )
-        )
-    ]
-    
-    request = ScheduleRequest(
-        classes=classes,
-        teacherAvailability=TeacherAvailabilityGenerator.create_weekly_availability(
-            start_date=start_date,
-            weeks=1
-        ),
-        startDate=start_date.strftime("%Y-%m-%d"),
-        endDate=end_date.strftime("%Y-%m-%d"),
-        constraints=ScheduleConstraints(
-            maxClassesPerDay=3,
-            maxClassesPerWeek=8,
-            minPeriodsPerWeek=1,
-            maxConsecutiveClasses=1,
-            consecutiveClassesRule="hard"
-        )
-    )
-    
-    # Generate schedule
-    response = create_schedule_dev(request)
-    
-    # Verify required periods are respected
-    assert_respects_required_periods(response, request)
+    def test_weekly_limit_success(self):
+        """Test that class scheduling respects weekly limits"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=5, num_weeks=1)
+        
+        constraint = WeeklyLimitConstraint()
+        harness.apply_constraint(constraint, context)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) == 0, f"Found unexpected violations: {violations}"
+        
+    def test_weekly_limit_violation(self):
+        """Test that violations are detected when weekly limits are exceeded"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=10, num_weeks=1)
+        
+        # Don't apply the constraint
+        constraint = WeeklyLimitConstraint()
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violations when constraint not applied"
 
-def test_respects_class_limits():
-    """Test that daily and weekly class limits are respected"""
-    start_date = datetime.now()
-    end_date = start_date + timedelta(days=14)
+class TestMinimumPeriodsConstraint:
+    """Tests for minimum periods constraints"""
     
-    request = ScheduleRequest(
-        classes=ClassGenerator.create_multiple_classes(10),  # Create many classes
-        teacherAvailability=TeacherAvailabilityGenerator.create_weekly_availability(
-            start_date=start_date,
-            weeks=2
-        ),
-        startDate=start_date.strftime("%Y-%m-%d"),
-        endDate=end_date.strftime("%Y-%m-%d"),
-        constraints=ScheduleConstraints(
-            maxClassesPerDay=2,    # Strict daily limit
-            maxClassesPerWeek=5,   # Strict weekly limit
-            minPeriodsPerWeek=1,
-            maxConsecutiveClasses=1,
-            consecutiveClassesRule="hard"
-        )
-    )
-    
-    # Generate schedule
-    response = create_schedule_dev(request)
-    
-    # Verify class limits are respected
-    assert_respects_class_limits(response, request)
+    def test_minimum_periods_success(self):
+        """Test that class scheduling respects minimum periods requirement"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=5, num_weeks=1)
+        
+        constraint = MinimumPeriodsConstraint()
+        harness.apply_constraint(constraint, context)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) == 0, f"Found unexpected violations: {violations}"
+        
+    def test_minimum_periods_violation(self):
+        """Test that violations are detected when minimum periods are not met"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=1, num_weeks=1)
+        
+        # Don't apply the constraint
+        constraint = MinimumPeriodsConstraint()
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violations when constraint not applied"
 
-def test_respects_consecutive_classes():
-    """Test that consecutive class constraints are respected"""
-    start_date = datetime.now()
-    end_date = start_date + timedelta(days=7)
+class TestPeriodsConstraints:
+    """Tests for period-related constraints"""
     
-    request = ScheduleRequest(
-        classes=ClassGenerator.create_multiple_classes(5),
-        teacherAvailability=TeacherAvailabilityGenerator.create_weekly_availability(
-            start_date=start_date,
-            weeks=1
-        ),
-        startDate=start_date.strftime("%Y-%m-%d"),
-        endDate=end_date.strftime("%Y-%m-%d"),
-        constraints=ScheduleConstraints(
-            maxClassesPerDay=4,
-            maxClassesPerWeek=8,
-            minPeriodsPerWeek=1,
-            maxConsecutiveClasses=1,  # No consecutive classes allowed
-            consecutiveClassesRule="hard"
-        )
-    )
-    
-    # Generate schedule
-    response = create_schedule_dev(request)
-    
-    # Verify consecutive class constraints are respected
-    assert_respects_consecutive_classes(response, request)
-
-def test_all_constraints():
-    """Test that all constraints are respected simultaneously"""
-    start_date = datetime.now()
-    end_date = start_date + timedelta(days=14)
-    
-    # Create complex test scenario
-    conflict_slots = TimeSlotGenerator.create_daily_pattern(1)  # First period conflicts
-    required_slots = [TimeSlot(dayOfWeek=2, period=3)]  # Tuesday third period required
-    unavailable_slots = TimeSlotGenerator.create_daily_pattern(4)  # Fourth period unavailable
-    
-    classes = [
-        ClassGenerator.create_class(
-            class_id="test-1",
-            weekly_schedule=WeeklySchedule(
-                conflicts=conflict_slots,
-                preferredPeriods=[],
-                requiredPeriods=required_slots,
-                avoidPeriods=[],
-                preferenceWeight=1.0,
-                avoidanceWeight=1.0
-            )
-        ),
-        ClassGenerator.create_class(
-            class_id="test-2",
-            weekly_schedule=WeeklySchedule(
-                conflicts=[],
-                preferredPeriods=[],
-                requiredPeriods=[],
-                avoidPeriods=[],
-                preferenceWeight=1.0,
-                avoidanceWeight=1.0
-            )
-        )
-    ]
-    
-    request = ScheduleRequest(
-        classes=classes,
-        teacherAvailability=TeacherAvailabilityGenerator.create_weekly_availability(
-            start_date=start_date,
-            weeks=2,
-            unavailable_pattern=unavailable_slots
-        ),
-        startDate=start_date.strftime("%Y-%m-%d"),
-        endDate=end_date.strftime("%Y-%m-%d"),
-        constraints=ScheduleConstraints(
-            maxClassesPerDay=2,
-            maxClassesPerWeek=5,
-            minPeriodsPerWeek=1,
-            maxConsecutiveClasses=1,
-            consecutiveClassesRule="hard"
-        )
-    )
-    
-    # Generate schedule
-    response = create_schedule_dev(request)
-    
-    # Verify all constraints
-    assert_valid_schedule(response, request)
+    def test_required_periods_success(self):
+        """Test that classes are scheduled in required periods"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=2, num_weeks=1)
+        
+        constraint = RequiredPeriodsConstraint()
+        harness.apply_constraint(constraint, context)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) == 0, f"Found unexpected violations: {violations}"
+        
+    def test_required_periods_violation(self):
+        """Test that violations are detected when required periods are not met"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=1, num_weeks=1)
+        
+        # Don't apply the constraint
+        constraint = RequiredPeriodsConstraint()
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violations when constraint not applied"
+        
+    def test_conflict_periods_success(self):
+        """Test that classes are not scheduled in conflicting periods"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=2, num_weeks=1)
+        
+        constraint = ConflictPeriodsConstraint()
+        harness.apply_constraint(constraint, context)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) == 0, f"Found unexpected violations: {violations}"
+        
+    def test_conflict_periods_violation(self):
+        """Test that violations are detected when classes are scheduled in conflicting periods"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=1, num_weeks=1)
+        
+        # Don't apply the constraint
+        constraint = ConflictPeriodsConstraint()
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violations when constraint not applied"

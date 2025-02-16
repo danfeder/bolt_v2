@@ -42,7 +42,7 @@ class DailyLimitConstraint(BaseConstraint):
         # Count assignments per day
         by_date = defaultdict(int)
         for assignment in assignments:
-            date = datetime.fromisoformat(assignment.date).date()
+            date = assignment["date"].date()
             by_date[date] += 1
         
         # Check for violations
@@ -98,7 +98,7 @@ class WeeklyLimitConstraint(BaseConstraint):
         # Count assignments per week
         by_week = defaultdict(int)
         for assignment in assignments:
-            date = datetime.fromisoformat(assignment.date)
+            date = assignment["date"]
             week_num = (date - context.start_date).days // 7
             by_week[week_num] += 1
         
@@ -216,7 +216,7 @@ class MinimumPeriodsConstraint(BaseConstraint):
         weekdays_by_week = defaultdict(set)  # Use set to count unique weekdays
         
         for assignment in assignments:
-            date = datetime.fromisoformat(assignment.date)
+            date = assignment["date"]
             week_num = (date - context.start_date).days // 7
             by_week[week_num] += 1
             

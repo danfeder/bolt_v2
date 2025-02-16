@@ -36,12 +36,11 @@ class SchedulerContext:
         
         # Index instructor availability by date
         self.instructor_unavailable = {}
-        for avail in request.teacherAvailability:
-            date_str = avail.date  # date is already a string in YYYY-MM-DD format
+        for avail in request.instructorAvailability:
+            date_str = avail.date.strftime("%Y-%m-%d") if isinstance(avail.date, datetime) else avail.date
             if date_str not in self.instructor_unavailable:
                 self.instructor_unavailable[date_str] = set()
-            periods = [slot.period for slot in avail.unavailableSlots]
-            self.instructor_unavailable[date_str].update(periods)
+            self.instructor_unavailable[date_str].update(avail.periods)
 
 class Constraint(Protocol):
     """Protocol defining the interface for scheduler constraints"""

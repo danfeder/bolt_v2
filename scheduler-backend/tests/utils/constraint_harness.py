@@ -7,7 +7,7 @@ from app.scheduling.constraints.base import BaseConstraint, ConstraintViolation
 from app.models import ScheduleRequest
 from tests.utils.generators import (
     ClassGenerator,
-    TeacherAvailabilityGenerator,
+    InstructorAvailabilityGenerator,
     TimeSlotGenerator,
     ScheduleRequestGenerator
 )
