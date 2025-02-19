@@ -44,6 +44,7 @@ class TestAssignmentConstraints:
         
         # Don't apply the constraint - this should allow multiple assignments
         constraint = SingleAssignmentConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)
         
         assert harness.solve(), "Failed to find feasible solution"
         
@@ -75,6 +76,7 @@ class TestAssignmentConstraints:
         
         # Don't apply the constraint - this should allow overlaps
         constraint = NoOverlapConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)
         
         assert harness.solve(), "Failed to find feasible solution"
         
@@ -108,6 +110,7 @@ class TestInstructorConstraints:
         
         # Don't apply the constraint
         constraint = InstructorAvailabilityConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)
         
         assert harness.solve(), "Failed to find feasible solution"
         
@@ -138,6 +141,7 @@ class TestInstructorConstraints:
         
         # Don't apply the constraint
         constraint = ConsecutivePeriodConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)
         
         assert harness.solve(), "Failed to find feasible solution"
         
@@ -168,6 +172,7 @@ class TestInstructorConstraints:
         
         # Don't apply the constraint - this should allow exceeding the limits
         constraint = InstructorLoadConstraint(max_classes_per_day=2, max_classes_per_week=8)
+        harness.apply_constraint(constraint, context, enabled=False)
         
         assert harness.solve(), "Failed to find feasible solution"
         
@@ -201,6 +206,7 @@ class TestDailyLimitConstraint:
         
         # Don't apply the constraint
         constraint = DailyLimitConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)
         
         assert harness.solve(), "Failed to find feasible solution"
         
@@ -234,6 +240,7 @@ class TestWeeklyLimitConstraint:
         
         # Don't apply the constraint
         constraint = WeeklyLimitConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)
         
         assert harness.solve(), "Failed to find feasible solution"
         
@@ -245,6 +252,27 @@ class TestWeeklyLimitConstraint:
 class TestMinimumPeriodsConstraint:
     """Tests for minimum periods constraints"""
     
+    def test_minimum_periods_single_day(self):
+        """Test that minimum periods constraint properly enforces minimums with limited schedule"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=1, num_weeks=1)
+        
+        # Set a base minimum of 5 periods per week
+        context.request.constraints.minPeriodsPerWeek = 5
+        
+        # Should require at least 2 periods even with one day (threshold rule)
+        constraint = MinimumPeriodsConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)  # Force under-assignment
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        assert len(violations) > 0, "Expected violation with single assignment"
+        assert any(v.severity == "error" for v in violations), "Expected error severity violation"
+        assert len(assignments) == 1, "Expected exactly one assignment"
+
     def test_minimum_periods_success(self):
         """Test that class scheduling respects minimum periods requirement"""
         harness = create_test_harness()
@@ -267,6 +295,7 @@ class TestMinimumPeriodsConstraint:
         
         # Don't apply the constraint
         constraint = MinimumPeriodsConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)
         
         assert harness.solve(), "Failed to find feasible solution"
         
@@ -277,6 +306,27 @@ class TestMinimumPeriodsConstraint:
 
 class TestPeriodsConstraints:
     """Tests for period-related constraints"""
+    
+    def test_required_periods_multiple(self):
+        """Test that violations are detected when multiple required periods are not met"""
+        harness = create_test_harness()
+        context = harness.create_context(num_classes=1, num_weeks=1)
+        
+        # Don't apply constraint to allow forced violations
+        constraint = RequiredPeriodsConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)
+        
+        assert harness.solve(), "Failed to find feasible solution"
+        
+        assignments = harness.get_solution_assignments(context)
+        violations = harness.validate_constraint(constraint, context)
+        
+        # Should have generated required periods for both Monday and Tuesday
+        assert len(violations) == 2, "Expected violations for both required periods"
+        # Should have one assignment in a non-required period
+        assert len(assignments) == 1, "Expected one assignment in a non-required period"
+        # Verify assignment is in period 8 (our forced non-required period)
+        assert all(a["timeSlot"]["period"] == 8 for a in assignments), "Assignment should be in period 8"
     
     def test_required_periods_success(self):
         """Test that classes are scheduled in required periods"""
@@ -300,6 +350,7 @@ class TestPeriodsConstraints:
         
         # Don't apply the constraint
         constraint = RequiredPeriodsConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)
         
         assert harness.solve(), "Failed to find feasible solution"
         
@@ -330,10 +381,18 @@ class TestPeriodsConstraints:
         
         # Don't apply the constraint
         constraint = ConflictPeriodsConstraint()
+        harness.apply_constraint(constraint, context, enabled=False)
         
         assert harness.solve(), "Failed to find feasible solution"
         
         assignments = harness.get_solution_assignments(context)
         violations = harness.validate_constraint(constraint, context)
         
-        assert len(violations) > 0, "Expected violations when constraint not applied"
+        assert len(violations) == 1, "Expected exactly one conflict violation"
+        # Should have both a conflict assignment and non-conflict assignment
+        assert len(assignments) == 2, "Expected two assignments (conflict and non-conflict)"
+        
+        # Verify periods used
+        periods = [a["timeSlot"]["period"] for a in assignments]
+        assert 1 in periods, "Should have assignment in conflict period (1)"
+        assert any(p > 1 for p in periods), "Should have assignment in non-conflict period"

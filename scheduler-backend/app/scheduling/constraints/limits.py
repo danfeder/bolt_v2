@@ -1,3 +1,4 @@
+"""Limit-related scheduling constraints"""
 from collections import defaultdict
 from datetime import datetime
 from typing import List, Dict, Any
@@ -10,10 +11,13 @@ from ..core import SchedulerContext
 class DailyLimitConstraint(BaseConstraint):
     """Ensures the number of classes per day doesn't exceed the maximum"""
     
-    def __init__(self):
-        super().__init__("daily_limit")
+    def __init__(self, enabled: bool = True):
+        super().__init__("daily_limit", enabled=enabled)
     
     def apply(self, context: SchedulerContext) -> None:
+        if not self.enabled:
+            return
+            
         # Group variables by date
         by_date = defaultdict(list)
         for var in context.variables:
@@ -24,7 +28,6 @@ class DailyLimitConstraint(BaseConstraint):
         # Add constraint for each date
         limit_count = 0
         for date, vars_list in by_date.items():
-            print(f"Adding daily limit constraint for {date}: {len(vars_list)} variables")
             context.model.Add(
                 sum(vars_list) <= context.request.constraints.maxClassesPerDay
             )
@@ -38,6 +41,7 @@ class DailyLimitConstraint(BaseConstraint):
         context: SchedulerContext
     ) -> List[ConstraintViolation]:
         violations = []
+        max_per_day = context.request.constraints.maxClassesPerDay
         
         # Count assignments per day
         by_date = defaultdict(int)
@@ -47,17 +51,17 @@ class DailyLimitConstraint(BaseConstraint):
         
         # Check for violations
         for date, count in by_date.items():
-            if count > context.request.constraints.maxClassesPerDay:
+            if count > max_per_day:
                 violations.append(ConstraintViolation(
                     message=(
                         f"Too many classes scheduled on {date}: "
-                        f"got {count}, maximum is {context.request.constraints.maxClassesPerDay}"
+                        f"got {count}, maximum is {max_per_day}"
                     ),
                     severity="error",
                     context={
                         "date": str(date),
                         "count": count,
-                        "maximum": context.request.constraints.maxClassesPerDay
+                        "maximum": max_per_day
                     }
                 ))
         
@@ -66,10 +70,13 @@ class DailyLimitConstraint(BaseConstraint):
 class WeeklyLimitConstraint(BaseConstraint):
     """Ensures the number of classes per week doesn't exceed the maximum"""
     
-    def __init__(self):
-        super().__init__("weekly_limit")
+    def __init__(self, enabled: bool = True):
+        super().__init__("weekly_limit", enabled=enabled)
     
     def apply(self, context: SchedulerContext) -> None:
+        if not self.enabled:
+            return
+            
         # Group variables by week
         by_week = defaultdict(list)
         for var in context.variables:
@@ -80,7 +87,6 @@ class WeeklyLimitConstraint(BaseConstraint):
         # Add constraint for each week
         limit_count = 0
         for week_num, vars_list in by_week.items():
-            print(f"Adding weekly limit constraint for week {week_num}: {len(vars_list)} variables")
             context.model.Add(
                 sum(vars_list) <= context.request.constraints.maxClassesPerWeek
             )
@@ -94,6 +100,7 @@ class WeeklyLimitConstraint(BaseConstraint):
         context: SchedulerContext
     ) -> List[ConstraintViolation]:
         violations = []
+        max_per_week = context.request.constraints.maxClassesPerWeek
         
         # Count assignments per week
         by_week = defaultdict(int)
@@ -104,17 +111,17 @@ class WeeklyLimitConstraint(BaseConstraint):
         
         # Check for violations
         for week_num, count in by_week.items():
-            if count > context.request.constraints.maxClassesPerWeek:
+            if count > max_per_week:
                 violations.append(ConstraintViolation(
                     message=(
                         f"Too many classes scheduled in week {week_num + 1}: "
-                        f"got {count}, maximum is {context.request.constraints.maxClassesPerWeek}"
+                        f"got {count}, maximum is {max_per_week}"
                     ),
                     severity="error",
                     context={
                         "weekNumber": week_num + 1,
                         "count": count,
-                        "maximum": context.request.constraints.maxClassesPerWeek
+                        "maximum": max_per_week
                     }
                 ))
         
@@ -123,10 +130,13 @@ class WeeklyLimitConstraint(BaseConstraint):
 class MinimumPeriodsConstraint(BaseConstraint):
     """Ensures the minimum number of classes per week is met"""
     
-    def __init__(self):
-        super().__init__("minimum_periods")
-    
+    def __init__(self, enabled: bool = True):
+        super().__init__("minimum_periods", enabled=enabled)
+        
     def apply(self, context: SchedulerContext) -> None:
+        if not self.enabled:
+            return
+            
         # Group variables by week and count weekdays per week
         by_week = defaultdict(list)
         by_day = defaultdict(lambda: defaultdict(list))  # week -> day -> vars
@@ -144,63 +154,24 @@ class MinimumPeriodsConstraint(BaseConstraint):
             
             by_week[week_num].append(var["variable"])
             by_day[week_num][date].append(var)
-        
+            
         # Add constraint for each week
         limit_count = 0
-        sorted_weeks = sorted(by_week.keys())
-        first_week = sorted_weeks[0] if sorted_weeks else 0
-        last_week = sorted_weeks[-1] if sorted_weeks else 0
-        
-        # Calculate total remaining classes to schedule
-        total_classes = len(context.request.classes)
-        
         for week_num, vars_list in by_week.items():
             weekdays = weekdays_by_week[week_num]
-            
-            if week_num == first_week:
-                # Pro-rate minimum for first week based on available weekdays
-                min_periods = (context.request.constraints.minPeriodsPerWeek * weekdays) // 5
-                print(f"Adding pro-rated minimum periods constraint for first week {week_num}:")
-                print(f"- {len(vars_list)} variables")
-                print(f"- {weekdays} weekdays")
-                print(f"- Minimum periods: {min_periods}")
+            # Use ceiling division and enforce a minimum threshold
+            base_min = context.request.constraints.minPeriodsPerWeek
+            prorated = (base_min * weekdays + 4) // 5  # Add 4 to round up
+            # If base minimum is 5 or more, ensure at least 2 periods even with one day
+            min_threshold = 2 if base_min >= 5 else 1
+            min_periods = max(min_threshold, prorated)
+            print(f"Adding pro-rated minimum periods constraint for week {week_num}:")
+            print(f"- {len(vars_list)} variables")
+            print(f"- {weekdays} weekdays")
+            print(f"- Minimum periods: {min_periods}")
+            if self.enabled:
                 context.model.Add(sum(vars_list) >= min_periods)
-                limit_count += 1
-                
-            elif week_num == last_week:
-                # For last week, encourage scheduling early in the week
-                # Sort days in ascending order
-                sorted_days = sorted(by_day[week_num].keys())
-                cumulative_vars = []
-                
-                # Add variables day by day
-                for day in sorted_days:
-                    day_vars = [v["variable"] for v in by_day[week_num][day]]
-                    cumulative_vars.extend(day_vars)
-                    
-                    # Try to schedule any remaining classes in these slots
-                    remaining = total_classes - sum(len(by_day[w][d]) for w in sorted_weeks 
-                                                 for d in by_day[w].keys() if w < week_num or 
-                                                 (w == week_num and d < day))
-                    if remaining > 0:
-                        print(f"Encouraging scheduling {remaining} remaining classes on {day}")
-                        # Add soft constraint with high weight to encourage early scheduling
-                        early_var = context.model.NewIntVar(0, remaining, f"early_scheduling_{day}")
-                        context.model.Add(early_var <= sum(day_vars))
-                        
-                        # Store early scheduling variables in context
-                        if "early_scheduling_vars" not in context.debug_info:
-                            context.debug_info["early_scheduling_vars"] = []
-                        context.debug_info["early_scheduling_vars"].append(early_var)
-                
-            else:
-                # Normal week - use full minimum
-                print(f"Adding minimum periods constraint for week {week_num}:")
-                print(f"- {len(vars_list)} variables")
-                print(f"- {weekdays} weekdays")
-                print(f"- Minimum periods: {context.request.constraints.minPeriodsPerWeek}")
-                context.model.Add(sum(vars_list) >= context.request.constraints.minPeriodsPerWeek)
-                limit_count += 1
+            limit_count += 1
             
         print(f"Added minimum periods constraints for {limit_count} weeks")
     
@@ -210,8 +181,9 @@ class MinimumPeriodsConstraint(BaseConstraint):
         context: SchedulerContext
     ) -> List[ConstraintViolation]:
         violations = []
+        min_periods = context.request.constraints.minPeriodsPerWeek
         
-        # Count assignments per week and also track weekdays per week
+        # Count assignments per week and available weekdays
         by_week = defaultdict(int)
         weekdays_by_week = defaultdict(set)  # Use set to count unique weekdays
         
@@ -223,52 +195,35 @@ class MinimumPeriodsConstraint(BaseConstraint):
             # Only track weekdays (Mon-Fri)
             if date.weekday() < 5:
                 weekdays_by_week[week_num].add(date.date())
-        
-        # Determine first and last weeks
-        sorted_weeks = sorted(by_week.keys())
-        first_week = sorted_weeks[0] if sorted_weeks else 0
-        last_week = sorted_weeks[-1] if sorted_weeks else 0
-        
-        # Check for violations (excluding first and last weeks)
+
+        print("Validating minimum periods across weeks:")                
+        # Check for violations in each week
         for week_num, count in by_week.items():
-            # Skip first and last weeks as they have special handling
-            if week_num in (first_week, last_week):
-                continue
-                
-            # Check regular weeks against full minimum
-            if count < context.request.constraints.minPeriodsPerWeek:
+            weekdays = len(weekdays_by_week[week_num])
+            base_min = min_periods
+            prorated = (base_min * weekdays + 4) // 5 if weekdays > 0 else base_min  # Add 4 to round up
+            min_threshold = 2 if base_min >= 5 else 1
+            prorated_min = max(min_threshold, prorated)
+            
+            print(f"Week {week_num + 1}:")
+            print(f"- Required minimum: {prorated_min}")
+            print(f"- Actual count: {count}")
+            print(f"- Weekdays available: {weekdays}")
+            
+            if count < prorated_min:
                 violations.append(ConstraintViolation(
                     message=(
                         f"Too few classes scheduled in week {week_num + 1}: "
-                        f"got {count}, minimum is {context.request.constraints.minPeriodsPerWeek}"
+                        f"got {count}, minimum is {prorated_min} "
+                        f"({weekdays} available days)"
                     ),
                     severity="error",
                     context={
                         "weekNumber": week_num + 1,
                         "count": count,
-                        "minimum": context.request.constraints.minPeriodsPerWeek
+                        "minimum": prorated_min,
+                        "availableDays": weekdays
                     }
                 ))
-            
-            # For first week, check pro-rated minimum if it's not a full week
-            if week_num == first_week and len(weekdays_by_week[week_num]) < 5:
-                available_days = len(weekdays_by_week[week_num])
-                pro_rated_min = (context.request.constraints.minPeriodsPerWeek * available_days) // 5
-                
-                if count < pro_rated_min:
-                    violations.append(ConstraintViolation(
-                        message=(
-                            f"Too few classes scheduled in first week (pro-rated): "
-                            f"got {count}, minimum is {pro_rated_min} "
-                            f"({available_days} available days)"
-                        ),
-                        severity="error",
-                        context={
-                            "weekNumber": week_num + 1,
-                            "count": count,
-                            "minimum": pro_rated_min,
-                            "availableDays": available_days
-                        }
-                    ))
         
         return violations

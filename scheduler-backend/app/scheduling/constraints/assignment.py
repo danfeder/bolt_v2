@@ -1,152 +1,102 @@
+"""Assignment-related scheduling constraints"""
 from collections import defaultdict
 from typing import List, Dict, Any
-
-from ortools.sat.python import cp_model
-
+from ..core import SchedulerContext  
 from .base import BaseConstraint, ConstraintViolation
-from ..core import SchedulerContext
 
-class SingleAssignmentConstraint(BaseConstraint):
-    """
-    Ensures each class is scheduled exactly once.
-    
-    This is a fundamental constraint that:
-    1. Requires every class to be assigned to exactly one time slot
-    2. Prevents any class from being scheduled multiple times
-    
-    Priority is set to 0 (highest) as this is a core scheduling requirement.
-    """
+class BaseAssignmentConstraint(BaseConstraint):
+    """Base class for assignment constraints"""
+    pass
+
+class SingleAssignmentConstraint(BaseAssignmentConstraint):
+    """Ensures each class is assigned at least once"""
     
     def __init__(self, enabled: bool = True):
-        super().__init__(
-            name="single_assignment",
-            enabled=enabled,
-            priority=0,  # Highest priority as this is a fundamental constraint
-            weight=None  # Use default from config
-        )
+        super().__init__("single_assignment", enabled=enabled)
     
     def apply(self, context: SchedulerContext) -> None:
-        """
-        Apply single assignment constraints to the CP-SAT model.
-        Creates sum(vars) == 1 constraint for each class.
-        """
         if not self.enabled:
             return
             
         # Group variables by class
-        by_class = defaultdict(list)
+        class_vars = defaultdict(list)
         for var in context.variables:
-            by_class[var["name"]].append(var["variable"])
-        
-        # Add constraint for each class
-        for class_name, vars_list in by_class.items():
-            context.model.Add(sum(vars_list) == 1)
+            class_vars[var["name"]].append(var["variable"])
             
-        print(f"Added single assignment constraints for {len(by_class)} classes")
-    
-    def _validate_impl(
+        # Add constraint for each class to be scheduled at least once
+        for class_name, vars_list in class_vars.items():
+            context.model.Add(sum(vars_list) >= 1)
+            
+    def validate(
         self,
         assignments: List[Dict[str, Any]],
         context: SchedulerContext
     ) -> List[ConstraintViolation]:
         violations = []
         
-        # Count assignments per class using dictionary access
-        assignments_per_class = defaultdict(int)
+        # Count assignments per class
+        class_counts = defaultdict(int)
         for assignment in assignments:
-            assignments_per_class[assignment['name']] += 1
-        
-        # Check for missing or duplicate assignments
+            class_counts[assignment["name"]] += 1
+            
+        # Check that each class has at least one assignment
         for class_obj in context.request.classes:
-            count = assignments_per_class[class_obj.name]
-            if count == 0:
+            if class_counts[class_obj.name] == 0:
                 violations.append(ConstraintViolation(
-                    message=f"Class {class_obj.name} is not scheduled",
+                    message=f"Class {class_obj.name} has no assignments",
                     severity="error",
-                    context={"name": class_obj.name}
+                    context={"className": class_obj.name}
                 ))
-            elif count > 1:
-                violations.append(ConstraintViolation(
-                    message=f"Class {class_obj.name} is scheduled {count} times",
-                    severity="error",
-                    context={
-                        "name": class_obj.name,
-                        "assignmentCount": count
-                    }
-                ))
-        
+                
         return violations
 
-class NoOverlapConstraint(BaseConstraint):
-    """
-    Ensures no two classes are scheduled in the same time slot.
-    
-    This constraint prevents scheduling conflicts by:
-    1. Ensuring each time slot (date + period) has at most one class
-    2. Adding constraints only when multiple classes could be scheduled in a slot
-    
-    Priority is set to 0 (highest) as this is a core scheduling requirement.
-    """
+class NoOverlapConstraint(BaseAssignmentConstraint):
+    """Prevents classes from being scheduled in the same period"""
     
     def __init__(self, enabled: bool = True):
-        super().__init__(
-            name="no_overlap",
-            enabled=enabled,
-            priority=0,  # Highest priority as this is a fundamental constraint
-            weight=None  # Use default from config
-        )
+        super().__init__("no_overlap", enabled=enabled)
     
     def apply(self, context: SchedulerContext) -> None:
-        """
-        Apply no-overlap constraints to the CP-SAT model.
-        Creates sum(vars) <= 1 constraint for each time slot that
-        could have multiple classes.
-        """
         if not self.enabled:
             return
             
-        # Group variables by date and period
-        by_slot = defaultdict(list)
+        # Group variables by timeslot
+        by_time = defaultdict(list)
         for var in context.variables:
             key = (var["date"].date(), var["period"])
-            by_slot[key].append(var["variable"])
-        
-        # Add constraint for each time slot
-        overlap_constraints = 0
-        for key, vars_list in by_slot.items():
-            if len(vars_list) > 1:  # Only need constraint if multiple classes could be scheduled
-                context.model.Add(sum(vars_list) <= 1)
-                overlap_constraints += 1
-                
-        print(f"Added {overlap_constraints} no-overlap constraints")
-    
-    def _validate_impl(
+            by_time[key].append(var["variable"])
+            
+        # Add constraint to prevent overlap in each timeslot
+        for vars_list in by_time.values():
+            context.model.Add(sum(vars_list) <= 1)
+            
+    def validate(
         self,
         assignments: List[Dict[str, Any]],
         context: SchedulerContext
     ) -> List[ConstraintViolation]:
         violations = []
         
-        # Group assignments by time slot
-        by_slot = defaultdict(list)
+        # Group assignments by timeslot
+        by_time = defaultdict(list)
         for assignment in assignments:
-            date = assignment['date'].date()
-            period = assignment['timeSlot']['period']
-            key = (date, period)
-            by_slot[key].append(assignment)
-        
+            key = (assignment["date"].date(), assignment["timeSlot"]["period"])
+            by_time[key].append(assignment["name"])
+            
         # Check for overlaps
-        for (date, period), slot_assignments in by_slot.items():
-            if len(slot_assignments) > 1:
-                class_names = [a['name'] for a in slot_assignments]
+        for (date, period), classes in by_time.items():
+            if len(classes) > 1:
                 violations.append(ConstraintViolation(
-                    message=f"Multiple classes scheduled for {date} period {period}",
+                    message=(
+                        f"Multiple classes scheduled on {date} period {period}: "
+                        f"{', '.join(classes)}"
+                    ),
                     severity="error",
                     context={
                         "date": str(date),
                         "period": period,
-                        "names": class_names
+                        "classes": classes
                     }
                 ))
-        
+                
         return violations

@@ -9,14 +9,14 @@ Below are some concrete suggestions to simplify or streamline the project while 
 ### 1.1 Consolidate Stable & Development Solvers
 Right now, there are two solver files—`stable.py` and `dev.py`—that share common logic (constraints, objective definitions, scheduling process). Instead of having two almost-parallel solvers, consider:
 
-- **Use a Single Solver File** with toggles or “feature flags” for experimental settings.  
+- **Use a Single Solver File** with toggles or "feature flags" for experimental settings.  
 - Keep any truly experimental code (new heuristics, alternative search loops) in a well-labeled, optional function or parameter that can be activated from a configuration value.
 
 **Why This Helps**  
 It ensures there is exactly one location for your solver flow—building the model, applying constraints, and defining objectives. You avoid duplicating logic and diverging code paths, which gets messy over time.
 
 ### 1.2 Merge Overlapping Constraints
-If certain constraints appear both in `constraints/` files and in your “dev vs. stable” solver code, unify them. Constraints can be classes with toggles. For example:
+If certain constraints appear both in `constraints/` files and in your "dev vs. stable" solver code, unify them. Constraints can be classes with toggles. For example:
 
     # Example pseudo-code
     constraint = SomeConstraint(
@@ -24,14 +24,14 @@ If certain constraints appear both in `constraints/` files and in your “dev vs
       penalty_weight=500
     )
 
-Doing this removes the need for a “dev constraints folder” vs. a “stable constraints folder.” You simply pass different parameters to the same constraint classes.
+Doing this removes the need for a "dev constraints folder" vs. a "stable constraints folder." You simply pass different parameters to the same constraint classes.
 
 ---
 
 ## 2. Simplify Configuration Management
 
 ### 2.1 Single Source of Truth
-You have a robust set of weight definitions (e.g., required periods = 10,000, etc.) scattered across multiple files. Move them into **one** configuration module (for instance, `solvers/config.py`). Then, load this config from environment variables or a JSON file if you need different environments or “profiles.”
+You have a robust set of weight definitions (e.g., required periods = 10,000, etc.) scattered across multiple files. Move them into **one** configuration module (for instance, `solvers/config.py`). Then, load this config from environment variables or a JSON file if you need different environments or "profiles."
 
 ### 2.2 Configuration as Data, Not Code
 Rather than hard-coding weight constants throughout the code, define them in a structured data format:
@@ -49,9 +49,9 @@ Then reference `SCHEDULER_CONFIG["required_period_weight"]` anywhere needed. Thi
 
 ## 3. Introduce a Layered Architecture for Constraints & Objectives
 
-Right now, each constraint is a standalone class. That’s good, but you could go even further in standardizing how constraints are applied:
+Right now, each constraint is a standalone class. That's good, but you could go even further in standardizing how constraints are applied:
 
-1. **Core “ConstraintManager”**: A single orchestrator that:
+1. **Core "ConstraintManager"**: A single orchestrator that:
    - Enumerates all constraints you want active.
    - Applies them in a known order to the CP-SAT model.
 
@@ -62,7 +62,7 @@ Right now, each constraint is a standalone class. That’s good, but you could g
              def apply(self, context: SchedulerContext) -> None:
                  pass
 
-   - Possibly give each constraint an optional “priority” or “enabled” flag.
+   - Possibly give each constraint an optional "priority" or "enabled" flag.
 
 3. **ObjectiveManager**: Similarly, unify how your objectives are added. A single place, e.g.:
 
@@ -85,14 +85,14 @@ This ensures your solver code remains short, and all constraint specifics reside
 
 Currently, the frontend has multiple components (Calendar, ClassEditor, ConstraintsForm, etc.) plus a debug panel. If it feels complicated, consider:
 
-1. **One “Master” Scheduling Page** that displays a step-by-step workflow:
+1. **One "Master" Scheduling Page** that displays a step-by-step workflow:
    - **Step 1**: Upload data (CSV).
    - **Step 2**: Edit constraints.
    - **Step 3**: Run the solver & see the results.
    - **Step 4**: Debug or tweak advanced settings (only if needed).
 
 2. **React Router or Tabbed UI** to separate concerns:
-   - A simple Tab #1 “Setup,” Tab #2 “Visualize,” Tab #3 “Debug.”
+   - A simple Tab #1 "Setup," Tab #2 "Visualize," Tab #3 "Debug."
    - Each tab only loads relevant components.
 
 3. **Leverage a Single State Manager** (which you already have with Zustand) so you do not need to pass props all over the place.
@@ -108,7 +108,7 @@ Each constraint class should have at least one small unit test verifying it inde
 You already mention testing with `Schedule_From_Json_Corrected.csv`. This is perfect for an end-to-end test. Continue to keep this test script as minimal as possible—just load the CSV, apply constraints, run the solver, and check final constraints are satisfied.
 
 ### 5.3 Factor Out Repetitive Integration Logic
-If your “test_scheduler.py” does the same setup code for multiple tests, you can factor that out into a small helper function or fixture. This keeps each test concise.
+If your "test_scheduler.py" does the same setup code for multiple tests, you can factor that out into a small helper function or fixture. This keeps each test concise.
 
 ---
 
@@ -123,21 +123,21 @@ A key step in simplifying the perceived complexity is making sure a new contribu
 
 2. **Short Docs in the Code**  
    - Each constraint or objective class has a docstring explaining what it does and how it interacts with the solver.  
-   - The solver “main flow” file is heavily commented in plain English: “1) load data, 2) apply constraints, 3) define objective, 4) solve, 5) return result.”
+   - The solver "main flow" file is heavily commented in plain English: "1) load data, 2) apply constraints, 3) define objective, 4) solve, 5) return result."
 
 3. **Deprecate or Remove Obsolete Files**  
-   - If any older system is not used (like a “BacktrackingScheduler” leftover or partially integrated code), remove or archive it in a separate branch.
+   - If any older system is not used (like a "BacktrackingScheduler" leftover or partially integrated code), remove or archive it in a separate branch.
 
 ---
 
 ## 7. Consider a Serverless or Microservice Approach Only If Needed
 
-You have a plan for “Serverless Integration” and parallel workers. This is valuable for scalability, but it can add complexity:
+You have a plan for "Serverless Integration" and parallel workers. This is valuable for scalability, but it can add complexity:
 
 - If local (single-machine) CP-SAT solves in a few seconds for your typical dataset, a complex serverless approach might not be necessary.
-- Or, you can unify a “local vs. serverless” approach behind a single interface so that everything else in your system doesn’t care which solver it calls.
+- Or, you can unify a "local vs. serverless" approach behind a single interface so that everything else in your system doesn't care which solver it calls.
 
-Keep an eye on whether your project truly needs this distribution or if it’s an optimization best left for advanced cases. A single-process solve might remain simpler and good enough.
+Keep an eye on whether your project truly needs this distribution or if it's an optimization best left for advanced cases. A single-process solve might remain simpler and good enough.
 
 ---
 
@@ -146,9 +146,9 @@ Keep an eye on whether your project truly needs this distribution or if it’s a
 1. ✅ **Merge stable & dev solvers** into one solver code path, toggling features by config or environment variables.  
 2. ✅ **Centralize constraint logic** with a "ConstraintManager" (and an analogous "ObjectiveManager") to reduce repeated code.  
 3. ✅ **Keep a single configuration file** for all weight definitions and solver toggles.  
-4. ✅ **Simplify the frontend** with a guided, tab-based workflow using a single global store (Zustand).  
-5. **Clean up tests** to keep them either very small (for each constraint) or truly end-to-end (for the entire scheduling run).  
-6. ✅ **Improve documentation** with one main README describing how the code is structured, how to add constraints, and how the solver is run.  
+4. ⬜ **Simplify the frontend** with a guided, tab-based workflow using a single global store (Zustand).  
+5. ✅ **Clean up tests** to keep them either very small (for each constraint) or truly end-to-end (for the entire scheduling run).  
+6. ⬜ **Improve documentation** with one main README describing how the code is structured, how to add constraints, and how the solver is run.  
 7. ✅ **Remove or archive legacy code** that duplicates functionality or is no longer needed.
 
 ---
@@ -186,26 +186,33 @@ Keep an eye on whether your project truly needs this distribution or if it’s a
   - [x] Create a `BaseConstraint` abstract class in `scheduler-backend/app/scheduling/constraints/base.py`
   - [x] Develop `ConstraintManager` to load and apply constraints in a consistent order.
   - [x] Refactor existing constraints to inherit from `BaseConstraint` and remove redundant code.
+  - [x] Add comprehensive test harness for constraint testing
+  - [x] Fix base constraint inheritance issues for all constraint types
+  - [x] Add improved validation to constraint tests with debugging output
 
 ### Phase 2 - Frontend Simplification (Week 4)
-- [x] **Tabbed Interface Implementation**
-  - [x] Create tab state management in `src/store/scheduleStore.ts`
-  - [x] Implement a guided workflow component (Wizard/Setup flow) via TabContainer
-  - [x] Migrate existing components to a tab-based structure
+- [ ] **Tabbed Interface Implementation**
+  - [ ] Create tab state management in `src/store/scheduleStore.ts`
+  - [ ] Implement a guided workflow component (Wizard/Setup flow) via TabContainer
+  - [ ] Migrate existing components to a tab-based structure
 
 ### Phase 3 - Testing & Validation (Week 5)
-- [ ] **Modular Testing Strategy**
-  - [x] Develop a test harness for isolated constraint testing in `scheduler-backend/tests/utils/constraint_harness.py`
-  - [ ] Create unit tests for each constraint class.
-  - [ ] Ensure full integration testing using `Schedule_From_Json_Corrected.csv` to validate end-to-end functionality.
+- [x] **Modular Testing Strategy**
+  - [x] Develop a test harness for isolated constraint testing
+  - [x] Create unit tests for each constraint class
+  - [x] Fix test harness forcing logic for constraint violations
+  - [x] Add detailed debug output to test harness
+  - [x] Verify all constraint tests with final coverage over 90%
+  - [ ] Set up integration testing using Schedule_From_Json_Corrected.csv to validate end-to-end functionality
 
 ### Phase 4 - Documentation (Ongoing)
 - [ ] **Architecture & Onboarding**
-  - [ ] Update the main README with an overview of the new architecture, including diagrams.
-  - [ ] Create a `CONSTRAINT_ADD_GUIDE.md` detailing how to add and test new constraints.
-  - [ ] Regularly update documentation to reflect changes during refactoring.
+  - [ ] Update the main README with an overview of the new architecture, including diagrams
+  - [ ] Create a `CONSTRAINT_ADD_GUIDE.md` detailing how to add and test new constraints
+  - [ ] Add test harness usage documentation
+  - [ ] Add constraint validation guide
 
 ### Additional Validation Steps
-- [ ] Ensure backend test coverage is above 90% before proceeding to front-end changes.
-- [ ] Validate that constraint loading order and application logic remain consistent with previous behavior.
-- [ ] Conduct an integration test using `Schedule_From_Json_Corrected.csv` to verify overall system integrity.
+- [x] Ensure backend test coverage is above 90% for constraint system
+- [x] Validate that constraint loading order and application logic remain consistent
+- [ ] Conduct a full integration test using Schedule_From_Json_Corrected.csv

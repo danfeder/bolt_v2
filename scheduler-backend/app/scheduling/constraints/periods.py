@@ -1,17 +1,29 @@
 """Constraints related to period assignments"""
-from typing import List
-from ..core import Constraint, SchedulerContext
-from ...models import ScheduleAssignment
-from ...utils.date_utils import to_utc_isoformat
+from typing import List, Dict, Any
+from datetime import datetime
+from ..core import SchedulerContext
+from .base import BaseConstraint, ConstraintViolation
+from ...models import (
+    ScheduleAssignment,
+    WeeklySchedule,
+    RequiredPeriod,
+    ConflictPeriod,
+    TimeSlot
+)
 
-class RequiredPeriodsConstraint(Constraint):
+class RequiredPeriodsConstraint(BaseConstraint):
     """Enforce required periods as hard constraints"""
     
-    def __init__(self):
-        super().__init__("Required Periods")
+    def __init__(self, enabled: bool = True):
+        super().__init__("required_periods", enabled=enabled)
     
     def apply(self, context: SchedulerContext) -> None:
         """Add hard constraints for required periods"""
+        if not self.enabled:
+            return
+            
+        print(f"Applying {self.name} constraint")
+            
         for class_obj in context.request.classes:
             # Look for variables matching this class
             class_vars = [
@@ -20,67 +32,87 @@ class RequiredPeriodsConstraint(Constraint):
             ]
 
             # Handle required periods if present
-            if class_obj.required_periods:
-                for required in class_obj.required_periods:
-                    # Find matching variable for this required period
+            if hasattr(class_obj, "weeklySchedule") and class_obj.weeklySchedule.requiredPeriods:
+                print(f"Found {len(class_obj.weeklySchedule.requiredPeriods)} required periods for {class_obj.name}")
+                for required in class_obj.weeklySchedule.requiredPeriods:
+                    print(f"Required period: date={required.date}, period={required.period}")
+                    # Find variables for this date and period
+                    required_date = datetime.strptime(required.date, "%Y-%m-%d")
                     matching_vars = [
                         var for var in class_vars
-                        if (to_utc_isoformat(var["date"]) == required.date
+                        if (var["date"].date() == required_date.date() 
                             and var["period"] == required.period)
                     ]
                     
-                    if matching_vars:
-                        # Force assignment to this period
-                        context.model.Add(matching_vars[0]["variable"] == 1)
-                        
-                        # Prevent assignment to any other periods on this day
-                        same_day_vars = [
-                            var for var in class_vars
-                        if (to_utc_isoformat(var["date"]) == required.date
-                            and var["period"] != required.period)
-                        ]
-                        for var in same_day_vars:
-                            context.model.Add(var["variable"] == 0)
+                    if self.enabled:
+                        # Force assignment to required period
+                        for var_dict in matching_vars:
+                            print(f"Forcing assignment for {class_obj.name} on {var_dict['date']} period {var_dict['period']}")
+                            context.model.Add(var_dict["variable"] == 1)
+                    else:
+                        # Force non-assignment to required period
+                        for var_dict in matching_vars:
+                            print(f"Preventing assignment for {class_obj.name} on {var_dict['date']} period {var_dict['period']}")
+                            context.model.Add(var_dict["variable"] == 0)
 
-    def validate(self, assignments: List[ScheduleAssignment], context: SchedulerContext) -> List[str]:
+    def validate(self, assignments: List[Dict[str, Any]], context: SchedulerContext) -> List[ConstraintViolation]:
         """Validate that all required periods are satisfied"""
         violations = []
+        print(f"Validating {self.name} constraint")
 
         for class_obj in context.request.classes:
-            if not class_obj.required_periods:
+            if not hasattr(class_obj, "weeklySchedule") or not class_obj.weeklySchedule.requiredPeriods:
                 continue
+                
+            print(f"Checking {len(class_obj.weeklySchedule.requiredPeriods)} required periods for {class_obj.name}")
 
             # Get assignments for this class
             class_assignments = [
-                a for a in assignments if a.name == class_obj.name
+                a for a in assignments if a["name"] == class_obj.name
             ]
+            print(f"Found {len(class_assignments)} assignments")
 
             # Check each required period
-            for required in class_obj.required_periods:
+            for required in class_obj.weeklySchedule.requiredPeriods:
+                required_date = datetime.strptime(required.date, "%Y-%m-%d")
                 matching = [
                     a for a in class_assignments
-                    if (a.date == required.date
-                        and a.timeSlot.period == required.period)
+                    if (a["date"].date() == required_date.date()
+                        and a["timeSlot"]["period"] == required.period)
                 ]
 
                 if not matching:
-                    violations.append(
-                        f"Class {class_obj.name} is missing required assignment "
-                        f"on {required.date} period {required.period}"
-                    )
+                    msg = (f"Class {class_obj.name} is missing required assignment "
+                          f"on {required.date} period {required.period}")
+                    print(f"Violation: {msg}")
+                    violations.append(ConstraintViolation(
+                        message=msg,
+                        severity="error",
+                        context={
+                            "name": class_obj.name,
+                            "date": required.date,
+                            "period": required.period
+                        }
+                    ))
 
+        print(f"Found {len(violations)} violations")
         return violations
 
-class ConflictPeriodsConstraint(Constraint):
+class ConflictPeriodsConstraint(BaseConstraint):
     """Prevent assignments to conflicting periods"""
 
-    def __init__(self):
-        super().__init__("Conflict Periods")
+    def __init__(self, enabled: bool = True):
+        super().__init__("conflict_periods", enabled=enabled)
 
     def apply(self, context: SchedulerContext) -> None:
         """Add constraints to prevent assignment to conflicting periods"""
+        if not self.enabled:
+            return
+            
+        print(f"Applying {self.name} constraint")
+
         for class_obj in context.request.classes:
-            if not class_obj.conflicts:
+            if not hasattr(class_obj, "weeklySchedule") or not class_obj.weeklySchedule.conflicts:
                 continue
 
             # Get all variables for this class
@@ -89,41 +121,53 @@ class ConflictPeriodsConstraint(Constraint):
                 if var["name"] == class_obj.name
             ]
 
+            print(f"Found {len(class_obj.weeklySchedule.conflicts)} conflicts for {class_obj.name}")
             # Prevent assignment to any conflicting periods
             for var in class_vars:
                 weekday = var["date"].weekday() + 1  # Convert to 1-5 for Monday-Friday
-                conflicts = [
-                    c for c in class_obj.conflicts
-                    if c.dayOfWeek == weekday and c.period == var["period"]
-                ]
-                if conflicts:
-                    context.model.Add(var["variable"] == 0)
+                for conflict in class_obj.weeklySchedule.conflicts:
+                    if conflict.dayOfWeek == weekday and conflict.period == var["period"]:
+                        if self.enabled:
+                            print(f"Preventing {class_obj.name} on day {weekday} period {var['period']}")
+                            context.model.Add(var["variable"] == 0)
+                        else:
+                            print(f"Forcing conflict for {class_obj.name} on day {weekday} period {var['period']}")
+                            context.model.Add(var["variable"] == 1)
 
-    def validate(self, assignments: List[ScheduleAssignment], context: SchedulerContext) -> List[str]:
+    def validate(self, assignments: List[Dict[str, Any]], context: SchedulerContext) -> List[ConstraintViolation]:
         """Validate that no assignments violate conflicts"""
         violations = []
+        print(f"Validating {self.name} constraint")
 
         for class_obj in context.request.classes:
-            if not class_obj.conflicts:
+            if not hasattr(class_obj, "weeklySchedule") or not class_obj.weeklySchedule.conflicts:
                 continue
 
+            print(f"Checking {len(class_obj.weeklySchedule.conflicts)} conflicts for {class_obj.name}")
+
             # Check each assignment against conflicts
-            class_assignments = [
-                a for a in assignments if a.name == class_obj.name
-            ]
+            for assignment in assignments:
+                if assignment["name"] == class_obj.name:
+                    weekday = assignment["date"].weekday() + 1
+                    period = assignment["timeSlot"]["period"]
+                    
+                    # Check if this period is in conflicts
+                    for conflict in class_obj.weeklySchedule.conflicts:
+                        if conflict.dayOfWeek == weekday and conflict.period == period:
+                            msg = (
+                                f"Class {class_obj.name} is assigned to conflicting period "
+                                f"on day {weekday} period {period}"
+                            )
+                            print(f"Violation: {msg}")
+                            violations.append(ConstraintViolation(
+                                message=msg,
+                                severity="error",
+                                context={
+                                    "name": class_obj.name,
+                                    "day": weekday,
+                                    "period": period
+                                }
+                            ))
 
-            for assignment in class_assignments:
-                conflicts = [
-                    c for c in class_obj.conflicts
-                    if (c.dayOfWeek == assignment.timeSlot.dayOfWeek
-                        and c.period == assignment.timeSlot.period)
-                ]
-
-                if conflicts:
-                    violations.append(
-                        f"Class {class_obj.name} is assigned to conflicting period "
-                        f"on day {assignment.timeSlot.dayOfWeek} "
-                        f"period {assignment.timeSlot.period}"
-                    )
-
+        print(f"Found {len(violations)} violations")
         return violations
