@@ -146,7 +146,7 @@ Keep an eye on whether your project truly needs this distribution or if it's an 
 1. ✅ **Merge stable & dev solvers** into one solver code path, toggling features by config or environment variables.  
 2. ✅ **Centralize constraint logic** with a "ConstraintManager" (and an analogous "ObjectiveManager") to reduce repeated code.  
 3. ✅ **Keep a single configuration file** for all weight definitions and solver toggles.  
-4. ⬜ **Simplify the frontend** with a guided, tab-based workflow using a single global store (Zustand).  
+4. ✅ **Simplify the frontend** with a guided, tab-based workflow using a single global store (Zustand).  
 5. ✅ **Clean up tests** to keep them either very small (for each constraint) or truly end-to-end (for the entire scheduling run).  
 6. ⬜ **Improve documentation** with one main README describing how the code is structured, how to add constraints, and how the solver is run.  
 7. ✅ **Remove or archive legacy code** that duplicates functionality or is no longer needed.
@@ -191,10 +191,21 @@ Keep an eye on whether your project truly needs this distribution or if it's an 
   - [x] Add improved validation to constraint tests with debugging output
 
 ### Phase 2 - Frontend Simplification (Week 4)
-- [ ] **Tabbed Interface Implementation**
-  - [ ] Create tab state management in `src/store/scheduleStore.ts`
-  - [ ] Implement a guided workflow component (Wizard/Setup flow) via TabContainer
-  - [ ] Migrate existing components to a tab-based structure
+- [x] **Tabbed Interface Implementation**
+  - [x] Create tab state management in `src/store/scheduleStore.ts`
+  - [x] Implement a guided workflow component (Wizard/Setup flow) via TabContainer
+  - [x] Migrate existing components to a tab-based structure
+  
+- [ ] **Genetic Algorithm Frontend Integration**
+  - [ ] **Extend Solver Configuration Panel:**
+    - Update the existing SolverConfig component (e.g., in `src/components/SolverConfig.tsx`) to include a toggle for “Genetic Optimization” that corresponds to the backend flag (`ENABLE_GENETIC_OPTIMIZATION`).
+    - When enabled, reveal additional controls for configuring genetic parameters (e.g., population size, mutation rate, crossover rate, max generations). These values should be managed via the global state (using Zustand) to be included in the scheduling request.
+  - [ ] **Update Scheduling Request Flow:**
+    - Modify the scheduling request payload to include the genetic optimization option and parameters.
+    - Display an indicator on the scheduling results page (or within the Schedule Comparison component) showing when the genetic solver was used.
+  - [ ] **Debug & Metrics Panel Enhancements:**
+    - Enhance the existing Schedule Debug Panel to display genetic-specific metrics (e.g., generation count, best fitness, population diversity).
+    - Ensure these metrics integrate with the current solution comparison and metrics tracking.
 
 ### Phase 3 - Testing & Validation (Week 5)
 - [x] **Modular Testing Strategy**
@@ -211,6 +222,46 @@ Keep an eye on whether your project truly needs this distribution or if it's an 
   - [ ] Create a `CONSTRAINT_ADD_GUIDE.md` detailing how to add and test new constraints
   - [ ] Add test harness usage documentation
   - [ ] Add constraint validation guide
+
+### Phase 5 - Alternative Solver Implementation
+- [x] **Genetic Algorithm Integration**
+  - [x] Create modular genetic algorithm components:
+    ```python
+    scheduler-backend/app/scheduling/solvers/
+    └── genetic/
+        ├── chromosome.py    # Schedule representation
+        ├── population.py    # Evolution management
+        ├── fitness.py       # Solution evaluation
+        └── optimizer.py     # Main optimization logic
+    ```
+  - [x] Implement feature toggle in unified solver:
+    ```python
+    ENABLE_GENETIC_OPTIMIZATION = bool(int(os.getenv('ENABLE_GENETIC_OPTIMIZATION', '0')))
+    ```
+  - [x] Add genetic algorithm configuration:
+    ```python
+    @dataclass
+    class GeneticConfig:
+        POPULATION_SIZE: int = 100
+        ELITE_SIZE: int = 2
+        MUTATION_RATE: float = 0.1
+        CROSSOVER_RATE: float = 0.8
+        MAX_GENERATIONS: int = 100
+    ```
+  - [x] Integrate with unified solver through feature flag
+  - [x] Add comprehensive unit tests for genetic components
+  - [x] Maintain compatibility with existing constraint system
+
+The genetic algorithm solver provides an alternative optimization approach that can be enabled through configuration. It maintains all the benefits of our unified architecture while offering:
+- Natural handling of competing objectives through fitness-based evolution
+- Potential for better solutions in complex, non-linear scenarios
+- Easy experimentation through configurable genetic parameters
+
+This implementation follows our architectural principles:
+- Uses the same constraint validation system
+- Configurable through environment variables
+- Integrates seamlessly with metrics and solution comparison
+- Fully tested with both unit and integration tests
 
 ### Additional Validation Steps
 - [x] Ensure backend test coverage is above 90% for constraint system

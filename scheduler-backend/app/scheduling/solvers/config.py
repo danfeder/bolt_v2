@@ -1,7 +1,43 @@
 """Component configuration for solvers"""
+from dataclasses import dataclass
 from typing import List
+import os
 
 from ..core import Constraint, Objective
+
+@dataclass
+class GeneticConfig:
+    """Configuration for genetic algorithm solver"""
+    POPULATION_SIZE: int = 100
+    ELITE_SIZE: int = 2
+    MUTATION_RATE: float = 0.1
+    CROSSOVER_RATE: float = 0.8
+    MAX_GENERATIONS: int = 100
+    CONVERGENCE_THRESHOLD: float = 0.01
+    
+    @classmethod
+    def from_env(cls) -> 'GeneticConfig':
+        """Create config from environment variables"""
+        return cls(
+            POPULATION_SIZE=int(os.getenv('GA_POPULATION_SIZE', '100')),
+            ELITE_SIZE=int(os.getenv('GA_ELITE_SIZE', '2')),
+            MUTATION_RATE=float(os.getenv('GA_MUTATION_RATE', '0.1')),
+            CROSSOVER_RATE=float(os.getenv('GA_CROSSOVER_RATE', '0.8')),
+            MAX_GENERATIONS=int(os.getenv('GA_MAX_GENERATIONS', '100')),
+            CONVERGENCE_THRESHOLD=float(os.getenv('GA_CONVERGENCE_THRESHOLD', '0.01'))
+        )
+
+# Feature flags
+ENABLE_METRICS = bool(int(os.getenv('ENABLE_METRICS', '1')))
+ENABLE_SOLUTION_COMPARISON = bool(int(os.getenv('ENABLE_SOLUTION_COMPARISON', '1')))
+ENABLE_EXPERIMENTAL_DISTRIBUTION = bool(int(os.getenv('ENABLE_EXPERIMENTAL_DISTRIBUTION', '0')))
+ENABLE_GENETIC_OPTIMIZATION = bool(int(os.getenv('ENABLE_GENETIC_OPTIMIZATION', '0')))
+
+# Load genetic algorithm config
+GENETIC_CONFIG = GeneticConfig.from_env()
+
+# Time limits
+SOLVER_TIME_LIMIT_SECONDS = int(os.getenv('SOLVER_TIME_LIMIT', '300'))
 
 # Constraints
 from ..constraints.assignment import SingleAssignmentConstraint, NoOverlapConstraint

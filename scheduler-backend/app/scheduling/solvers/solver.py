@@ -3,11 +3,17 @@ from typing import Dict, Any, List, Optional
 import traceback
 from dateutil import parser
 
-from ..core import SchedulerContext, ConstraintManager, config
-from .config import get_base_constraints, get_base_objectives
+from ..core import SchedulerContext, ConstraintManager
+from . import config
+from .config import (
+    get_base_constraints,
+    get_base_objectives,
+    GENETIC_CONFIG
+)
 from ..objectives.distribution import DistributionObjective
 from .base import BaseSolver
 from ...models import ScheduleRequest, ScheduleResponse
+from .genetic.optimizer import GeneticOptimizer
 
 class UnifiedSolver(BaseSolver):
     """
@@ -20,6 +26,20 @@ class UnifiedSolver(BaseSolver):
         self._last_run_metadata = None
         self._last_stable_response: Optional[ScheduleResponse] = None
         self._constraint_manager = ConstraintManager()
+        
+        # Initialize genetic optimizer if enabled
+        self._genetic_optimizer = (
+            GeneticOptimizer(
+                population_size=GENETIC_CONFIG.POPULATION_SIZE,
+                elite_size=GENETIC_CONFIG.ELITE_SIZE,
+                mutation_rate=GENETIC_CONFIG.MUTATION_RATE,
+                crossover_rate=GENETIC_CONFIG.CROSSOVER_RATE,
+                max_generations=GENETIC_CONFIG.MAX_GENERATIONS,
+                convergence_threshold=GENETIC_CONFIG.CONVERGENCE_THRESHOLD
+            )
+            if config.ENABLE_GENETIC_OPTIMIZATION
+            else None
+        )
         
         # Add base constraints through constraint manager
         for constraint in get_base_constraints():
@@ -63,6 +83,7 @@ class UnifiedSolver(BaseSolver):
         print(f"- Metrics enabled: {config.ENABLE_METRICS}")
         print(f"- Solution comparison enabled: {config.ENABLE_SOLUTION_COMPARISON}")
         print(f"- Experimental distribution enabled: {config.ENABLE_EXPERIMENTAL_DISTRIBUTION}")
+        print(f"- Genetic optimization enabled: {config.ENABLE_GENETIC_OPTIMIZATION}")
         print("\nConstraints:")
         for constraint in self.constraints:
             print(f"- {constraint.name}")
@@ -79,18 +100,27 @@ class UnifiedSolver(BaseSolver):
             if config.ENABLE_SOLUTION_COMPARISON and self._last_stable_response:
                 current_stable = self._last_stable_response
             
-            # Create context and apply constraints
-            context = SchedulerContext(
-                model=self.model,
-                solver=self.solver,
-                request=request,
-                start_date=start_date,
-                end_date=end_date
-            )
-            
-            # Apply constraints through manager
-            self._constraint_manager.apply_all(context)
-            response = super().create_schedule(request)
+            if config.ENABLE_GENETIC_OPTIMIZATION and self._genetic_optimizer:
+                print("\nUsing genetic algorithm optimizer")
+                response = self._genetic_optimizer.optimize(
+                    request=request,
+                    weights=self.get_weights(),
+                    time_limit_seconds=config.SOLVER_TIME_LIMIT_SECONDS
+                )
+            else:
+                print("\nUsing OR-Tools CP-SAT solver")
+                # Create context and apply constraints
+                context = SchedulerContext(
+                    model=self.model,
+                    solver=self.solver,
+                    request=request,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                
+                # Apply constraints through manager
+                self._constraint_manager.apply_all(context)
+                response = super().create_schedule(request)
             
             # Validate solution
             print("\nValidating constraints...")
