@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/apiClient';
 import { SolverWeights, GeneticSolverConfig, SolverConfig as SolverConfigType } from '../types';
 import { GeneticParameters } from './GeneticParameters';
+import { useScheduleStore } from '../store/scheduleStore';
 import './SolverConfig.css';
 
 type PresetType = 'balanced' | 'strict' | 'teacher' | 'rapid' | 'custom';
@@ -198,9 +199,9 @@ const settingGroups: Record<string, SettingGroup> = {
 };
 
 export const SolverConfig: React.FC = () => {
+  const { geneticConfig, setGeneticConfig } = useScheduleStore();
   const [selectedPreset, setSelectedPreset] = useState<PresetType>('balanced');
   const [weights, setWeights] = useState<SolverWeights>(presets.balanced.weights);
-  const [geneticConfig, setGeneticConfig] = useState<GeneticSolverConfig>(presets.balanced.genetic!);
   const [isSaving, setIsSaving] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showTour, setShowTour] = useState(false);
@@ -237,7 +238,7 @@ export const SolverConfig: React.FC = () => {
     setSelectedPreset(preset);
     setWeights(presets[preset].weights);
     if (presets[preset].genetic) {
-      setGeneticConfig(presets[preset].genetic);
+      setGeneticConfig(presets[preset].genetic as GeneticSolverConfig);
     }
   };
 
@@ -480,10 +481,10 @@ export const SolverConfig: React.FC = () => {
                       type="checkbox"
                       className="sr-only peer"
                       checked={geneticConfig.enabled}
-              onChange={() => setGeneticConfig(prev => ({
-                ...prev,
-                enabled: !prev.enabled
-              }))}
+              onChange={() => setGeneticConfig({
+                ...geneticConfig,
+                enabled: !geneticConfig.enabled
+              })}
                     />
                     <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                   </label>

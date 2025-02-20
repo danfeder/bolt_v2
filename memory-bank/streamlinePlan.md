@@ -196,14 +196,14 @@ Keep an eye on whether your project truly needs this distribution or if it's an 
   - [x] Implement a guided workflow component (Wizard/Setup flow) via TabContainer
   - [x] Migrate existing components to a tab-based structure
   
-- [ ] **Genetic Algorithm Frontend Integration**
-  - [ ] **Extend Solver Configuration Panel:**
-    - Update the existing SolverConfig component (e.g., in `src/components/SolverConfig.tsx`) to include a toggle for “Genetic Optimization” that corresponds to the backend flag (`ENABLE_GENETIC_OPTIMIZATION`).
+- [x] **Genetic Algorithm Frontend Integration**
+  - [x] **Extend Solver Configuration Panel:**
+    - Update the existing SolverConfig component (e.g., in `src/components/SolverConfig.tsx`) to include a toggle for "Genetic Optimization" that corresponds to the backend flag (`ENABLE_GENETIC_OPTIMIZATION`).
     - When enabled, reveal additional controls for configuring genetic parameters (e.g., population size, mutation rate, crossover rate, max generations). These values should be managed via the global state (using Zustand) to be included in the scheduling request.
-  - [ ] **Update Scheduling Request Flow:**
+  - [x] **Update Scheduling Request Flow:**
     - Modify the scheduling request payload to include the genetic optimization option and parameters.
     - Display an indicator on the scheduling results page (or within the Schedule Comparison component) showing when the genetic solver was used.
-  - [ ] **Debug & Metrics Panel Enhancements:**
+  - [x] **Debug & Metrics Panel Enhancements:**
     - Enhance the existing Schedule Debug Panel to display genetic-specific metrics (e.g., generation count, best fitness, population diversity).
     - Ensure these metrics integrate with the current solution comparison and metrics tracking.
 
