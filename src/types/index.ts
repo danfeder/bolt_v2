@@ -41,12 +41,50 @@ export interface ScheduleAssignment {
   timeSlot: TimeSlot;
 }
 
+export interface GeneticParams {
+  populationSize: number;
+  eliteSize: number;
+  mutationRate: number;
+  crossoverRate: number;
+  maxGenerations: number;
+}
+
+export interface GeneticSolverConfig extends GeneticParams {
+  enabled: boolean;
+}
+
+export interface GeneticMetrics {
+  generation: number;
+  maxGenerations: number;
+  bestFitness: number;
+  populationDiversity: number;
+  averageFitness: number;
+}
+
+export interface SolverDecision {
+  solverType: 'genetic' | 'cpsat';
+  reason: string;
+  metrics: {
+    totalClasses: number;
+    totalDays: number;
+    constraintComplexity: number;
+    teacherConflicts: number;
+    overallComplexity: number;
+  };
+}
+
+export interface SolverConfig {
+  weights: SolverWeights;
+  genetic: GeneticSolverConfig;
+}
+
 export interface ScheduleMetadata {
   duration_ms: number;
   solutions_found: number;
   score: number;
   gap: number;
   distribution?: DistributionMetrics;
+  genetic?: GeneticMetrics;
 }
 
 export interface WeeklyDistributionMetrics {

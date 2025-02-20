@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../lib/apiClient';
-import { SolverWeights } from '../types';
+import { SolverWeights, GeneticSolverConfig, SolverConfig as SolverConfigType } from '../types';
+import { GeneticParameters } from './GeneticParameters';
 import './SolverConfig.css';
 
 type PresetType = 'balanced' | 'strict' | 'teacher' | 'rapid' | 'custom';
 
-const presets: Record<PresetType, { name: string; description: string; weights: SolverWeights }> = {
+interface PresetConfig {
+  name: string;
+  description: string;
+  weights: SolverWeights;
+  genetic?: GeneticSolverConfig;
+}
+
+const presets: Record<PresetType, PresetConfig> = {
   balanced: {
     name: 'Balanced Schedule',
     description: 'Even distribution of classes with moderate priorities',
@@ -17,6 +25,14 @@ const presets: Record<PresetType, { name: string; description: string; weights: 
       distribution: 1000,
       avoid_periods: -500,
       earlier_dates: 10,
+    },
+    genetic: {
+      enabled: false,
+      populationSize: 100,
+      eliteSize: 2,
+      mutationRate: 0.1,
+      crossoverRate: 0.8,
+      maxGenerations: 100
     }
   },
   strict: {
@@ -30,6 +46,14 @@ const presets: Record<PresetType, { name: string; description: string; weights: 
       distribution: 1200,
       avoid_periods: -1000,
       earlier_dates: 5,
+    },
+    genetic: {
+      enabled: true,
+      populationSize: 200,
+      eliteSize: 4,
+      mutationRate: 0.05,
+      crossoverRate: 0.9,
+      maxGenerations: 200
     }
   },
   teacher: {
@@ -43,6 +67,14 @@ const presets: Record<PresetType, { name: string; description: string; weights: 
       distribution: 1500,
       avoid_periods: -2000,
       earlier_dates: 0,
+    },
+    genetic: {
+      enabled: false,
+      populationSize: 100,
+      eliteSize: 2,
+      mutationRate: 0.1,
+      crossoverRate: 0.8,
+      maxGenerations: 100
     }
   },
   rapid: {
@@ -56,6 +88,14 @@ const presets: Record<PresetType, { name: string; description: string; weights: 
       distribution: 500,
       avoid_periods: -200,
       earlier_dates: 50,
+    },
+    genetic: {
+      enabled: true,
+      populationSize: 150,
+      eliteSize: 3,
+      mutationRate: 0.15,
+      crossoverRate: 0.85,
+      maxGenerations: 150
     }
   },
   custom: {
@@ -69,6 +109,14 @@ const presets: Record<PresetType, { name: string; description: string; weights: 
       distribution: 1000,
       avoid_periods: -500,
       earlier_dates: 10,
+    },
+    genetic: {
+      enabled: false,
+      populationSize: 100,
+      eliteSize: 2,
+      mutationRate: 0.1,
+      crossoverRate: 0.8,
+      maxGenerations: 100
     }
   }
 };
@@ -130,12 +178,29 @@ const settingGroups: Record<string, SettingGroup> = {
         isNegative: true
       }
     ]
+  },
+  genetic: {
+    title: '🧬 Genetic Optimization',
+    description: 'Configure genetic algorithm parameters',
+    settings: [
+      {
+        key: 'distribution',
+        label: 'Population Size',
+        description: 'Number of schedules in each generation'
+      },
+      {
+        key: 'daily_balance',
+        label: 'Elite Size',
+        description: 'Number of best schedules to keep'
+      }
+    ]
   }
 };
 
 export const SolverConfig: React.FC = () => {
   const [selectedPreset, setSelectedPreset] = useState<PresetType>('balanced');
   const [weights, setWeights] = useState<SolverWeights>(presets.balanced.weights);
+  const [geneticConfig, setGeneticConfig] = useState<GeneticSolverConfig>(presets.balanced.genetic!);
   const [isSaving, setIsSaving] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showTour, setShowTour] = useState(false);
@@ -171,6 +236,9 @@ export const SolverConfig: React.FC = () => {
   const handlePresetChange = (preset: PresetType) => {
     setSelectedPreset(preset);
     setWeights(presets[preset].weights);
+    if (presets[preset].genetic) {
+      setGeneticConfig(presets[preset].genetic);
+    }
   };
 
   const [lastChanged, setLastChanged] = useState<keyof SolverWeights | null>(null);
@@ -191,7 +259,11 @@ export const SolverConfig: React.FC = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await apiClient.updateSolverConfig(weights);
+      const config: SolverConfigType = {
+        weights,
+        genetic: geneticConfig
+      };
+      await apiClient.updateSolverConfig(config);
       alert('Settings saved successfully!');
     } catch (error) {
       alert('Failed to save settings');
@@ -366,6 +438,7 @@ export const SolverConfig: React.FC = () => {
         </button>
         
         {showAdvanced && (
+          <>
           <div className="mt-4 space-y-4">
             <div className="bg-gray-50 p-4 rounded-lg">
               <h4 className="font-medium mb-2">Day Usage Priority</h4>
@@ -396,7 +469,34 @@ export const SolverConfig: React.FC = () => {
                 Slight preference for scheduling classes earlier when possible
               </p>
             </div>
+
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium">🧬 Genetic Optimization</h3>
+                <div className="flex items-center">
+                  <span className="mr-2 text-sm text-gray-600">Enable</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={geneticConfig.enabled}
+              onChange={() => setGeneticConfig(prev => ({
+                ...prev,
+                enabled: !prev.enabled
+              }))}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+              </div>
+
+              <GeneticParameters
+                config={geneticConfig}
+                onChange={setGeneticConfig}
+              />
+            </div>
           </div>
+          </>
         )}
       </div>
     </div>

@@ -8,11 +8,21 @@ import type {
   ScheduleMetadata,
   SchedulerTab,
   TabState,
-  TabValidationState
+  TabValidationState,
+  GeneticSolverConfig
 } from '../types';
 import type { ComparisonResult } from './types';
 import { analyzeScheduleComplexity, type SolverDecision } from '../lib/scheduleComplexity';
 import { generateScheduleWithOrTools, compareScheduleSolvers } from '../lib/apiClient';
+
+const defaultGeneticConfig: GeneticSolverConfig = {
+  enabled: false,
+  populationSize: 100,
+  eliteSize: 2,
+  mutationRate: 0.1,
+  crossoverRate: 0.8,
+  maxGenerations: 100
+};
 
 interface ScheduleState extends TabState {
   classes: Class[];
@@ -27,6 +37,7 @@ interface ScheduleState extends TabState {
   comparisonResult: ComparisonResult | null;
   isComparing: boolean;
   error: string | null;
+  geneticConfig: GeneticSolverConfig;
   tabValidation: TabValidationState;
   setClasses: (classes: Class[]) => void;
   setCurrentTab: (tab: SchedulerTab) => void;
@@ -35,6 +46,7 @@ interface ScheduleState extends TabState {
   setInstructorAvailability: (availability: InstructorAvailability[] | ((prev: InstructorAvailability[]) => InstructorAvailability[])) => void;
   setConstraints: (constraints: Partial<ScheduleConstraints>) => void;
   setSchedulerVersion: (version: 'stable' | 'dev') => void;
+  setGeneticConfig: (config: Partial<GeneticSolverConfig>) => void;
   generateSchedule: () => Promise<void>;
   compareVersions: () => Promise<void>;
   cancelGeneration: () => void;
@@ -97,6 +109,7 @@ export const useScheduleStore = create<ScheduleState>((
     comparisonResult: null,
     isComparing: false,
     error: null,
+    geneticConfig: defaultGeneticConfig,
     
     setClasses: (classes: Class[]) => set({ classes }),
     
@@ -112,10 +125,15 @@ export const useScheduleStore = create<ScheduleState>((
         constraints: { ...state.constraints, ...newConstraints }
       })),
 
+    setGeneticConfig: (config: Partial<GeneticSolverConfig>) => 
+      set((state: ScheduleState) => ({
+        geneticConfig: { ...state.geneticConfig, ...config }
+      })),
+
     setSchedulerVersion: (version: 'stable' | 'dev') => set({ schedulerVersion: version }),
     
     generateSchedule: async () => {
-      const { classes, instructorAvailability, constraints, schedulerVersion } = get();
+      const { classes, instructorAvailability, constraints, schedulerVersion, geneticConfig } = get();
       
       if (classes.length === 0) {
         set({ error: 'No classes to schedule. Please add classes first.' });
@@ -142,7 +160,8 @@ export const useScheduleStore = create<ScheduleState>((
           classes,
           instructorAvailability,
           constraints,
-          schedulerVersion
+          schedulerVersion,
+          geneticConfig
         );
 
         set({

@@ -3,19 +3,12 @@ import type {
   ScheduleAssignment, 
   ScheduleConstraints, 
   InstructorAvailability,
-  ScheduleMetadata 
+  ScheduleMetadata,
+  SolverWeights,
+  GeneticSolverConfig,
+  SolverConfig
 } from '../types';
 import type { ComparisonResult } from '../store/types';
-
-interface WeightConfig {
-  final_week_compression: number;
-  day_usage: number;
-  daily_balance: number;
-  preferred_periods: number;
-  distribution: number;
-  avoid_periods: number;
-  earlier_dates: number;
-}
 
 class ApiClient {
   private baseUrl: string;
@@ -30,9 +23,10 @@ class ApiClient {
     classes: Class[],
     instructorAvailability: InstructorAvailability[],
     constraints: ScheduleConstraints,
-    version: SchedulerVersion = 'stable'
+    version: SchedulerVersion = 'stable',
+    geneticConfig?: GeneticSolverConfig
   ): Promise<{ assignments: ScheduleAssignment[]; metadata: ScheduleResponse['metadata'] }> {
-    return generateScheduleWithOrTools(classes, instructorAvailability, constraints, version);
+    return generateScheduleWithOrTools(classes, instructorAvailability, constraints, version, geneticConfig);
   }
 
   async compareSchedules(
@@ -43,13 +37,13 @@ class ApiClient {
     return compareScheduleSolvers(classes, instructorAvailability, constraints);
   }
 
-  async updateSolverConfig(weights: WeightConfig): Promise<{ current_weights: WeightConfig }> {
+  async updateSolverConfig(config: SolverConfig): Promise<{ current: SolverConfig }> {
     const response = await fetch(`${this.baseUrl}/solver/config`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ weights }),
+      body: JSON.stringify(config),
     });
 
     if (!response.ok) {
@@ -60,7 +54,8 @@ class ApiClient {
     const result = await response.json();
     return result;
   }
-  async resetSolverConfig(): Promise<{ current_weights: WeightConfig }> {
+
+  async resetSolverConfig(): Promise<{ current: SolverConfig }> {
     const response = await fetch(`${this.baseUrl}/solver/config/reset`, {
       method: 'POST',
       headers: {
@@ -120,7 +115,8 @@ export async function generateScheduleWithOrTools(
   classes: Class[],
   instructorAvailability: InstructorAvailability[],
   constraints: ScheduleConstraints,
-  version: SchedulerVersion = 'stable'
+  version: SchedulerVersion = 'stable',
+  geneticConfig?: GeneticSolverConfig
 ): Promise<{ assignments: ScheduleAssignment[]; metadata: ScheduleResponse['metadata'] }> {
   const request: ScheduleRequest = {
     classes,
@@ -147,7 +143,10 @@ export async function generateScheduleWithOrTools(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify({
+      ...request,
+      geneticConfig
+    }),
     });
 
     const data = await response.json();

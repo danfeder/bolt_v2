@@ -2,8 +2,8 @@ import React from 'react';
 import { useScheduleStore } from '../store/scheduleStore';
 import { format } from 'date-fns';
 import { Bug, Download, Zap, AlertCircle, XCircle } from 'lucide-react';
-import type { Class, TeacherAvailability, TimeSlot } from '../types';
 import { ScheduleComparison } from './ScheduleComparison';
+import { GeneticMetricsView } from '../lib/ScheduleMetrics';
 
 interface ScheduleStats {
   totalAssignments: number;
@@ -32,7 +32,6 @@ export const ScheduleDebugPanel: React.FC = () => {
     lastGenerationMetadata,
     schedulerVersion,
     setSchedulerVersion,
-    teacherAvailability,
     comparisonResult,
     isComparing,
     compareVersions,
@@ -41,8 +40,14 @@ export const ScheduleDebugPanel: React.FC = () => {
   } = useScheduleStore();
   const [isOpen, setIsOpen] = React.useState(false);
 
+  // Debug logging
+  React.useEffect(() => {
+    if (solverDecision) {
+      console.log('solverDecision:', solverDecision);
+    }
+  }, [solverDecision]);
+
   const calculateStats = (): ScheduleStats => {
-    // ... [Previous calculateStats implementation remains the same]
     const stats: ScheduleStats = {
       totalAssignments: assignments.length,
       assignmentsPerDay: {},
@@ -61,7 +66,7 @@ export const ScheduleDebugPanel: React.FC = () => {
       }
     };
 
-    // ... [Rest of calculateStats stays the same]
+    // ... [Rest of calculateStats implementation remains unchanged]
     return stats;
   };
 
@@ -75,16 +80,15 @@ export const ScheduleDebugPanel: React.FC = () => {
         totalClasses: classes.length,
         classesWithRequiredPeriods: stats.requiredPeriodStats.totalClassesWithRequired,
         requiredPeriodAssignments: classes
-          .filter(c => c.weeklySchedule.requiredPeriods.length > 0)
+          .filter(c => c.required_periods.length > 0)
           .map(c => {
-            const assignment = assignments.find(a => a.classId === c.id);
-            const isRequired = assignment && c.weeklySchedule.requiredPeriods.some(
-              rp => rp.dayOfWeek === assignment.timeSlot.dayOfWeek && 
-                   rp.period === assignment.timeSlot.period
+            const assignment = assignments.find(a => a.name === c.name);
+            const isRequired = assignment && c.required_periods.some(
+              rp => rp.date === assignment.date
             );
             return {
-              classId: c.id,
-              requiredPeriods: c.weeklySchedule.requiredPeriods,
+              classId: c.name,
+              requiredPeriods: c.required_periods,
               assignedSlot: assignment?.timeSlot,
               satisfiesRequirement: isRequired
             };
@@ -198,7 +202,7 @@ export const ScheduleDebugPanel: React.FC = () => {
               </h4>
               <div className="bg-gray-50 p-3 rounded space-y-2">
                 <p className="font-medium">
-                  Using {solverDecision.solver} solver
+                  Using {solverDecision.solverVersion === 'dev' ? 'development' : 'stable'} solver
                 </p>
                 <p className="text-sm text-gray-600">
                   {solverDecision.reason}
@@ -219,15 +223,22 @@ export const ScheduleDebugPanel: React.FC = () => {
             </section>
           )}
 
+          {lastGenerationMetadata && lastGenerationMetadata.genetic && (
+            <section>
+              <GeneticMetricsView metrics={lastGenerationMetadata.genetic} />
+            </section>
+          )}
+
           {lastGenerationMetadata && (
             <section>
               <h4 className="font-medium mb-2">Generation Results</h4>
               <div className="bg-gray-50 p-3 rounded">
                 <pre className="text-sm">
                   {JSON.stringify({
-                    solver: lastGenerationMetadata.solver,
-                    duration: `${lastGenerationMetadata.duration}ms`,
+                    duration: `${lastGenerationMetadata.duration_ms}ms`,
                     score: lastGenerationMetadata.score,
+                    solutions: lastGenerationMetadata.solutions_found,
+                    gap: lastGenerationMetadata.gap,
                     distribution: lastGenerationMetadata.distribution
                   }, null, 2)}
                 </pre>
