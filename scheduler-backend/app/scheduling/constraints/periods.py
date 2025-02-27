@@ -35,12 +35,11 @@ class RequiredPeriodsConstraint(BaseConstraint):
             if hasattr(class_obj, "weeklySchedule") and class_obj.weeklySchedule.requiredPeriods:
                 print(f"Found {len(class_obj.weeklySchedule.requiredPeriods)} required periods for {class_obj.name}")
                 for required in class_obj.weeklySchedule.requiredPeriods:
-                    print(f"Required period: date={required.date}, period={required.period}")
-                    # Find variables for this date and period
-                    required_date = datetime.strptime(required.date, "%Y-%m-%d")
+                    print(f"Required period: day={required.dayOfWeek}, period={required.period}")
+                    # Find variables for this weekday and period
                     matching_vars = [
                         var for var in class_vars
-                        if (var["date"].date() == required_date.date() 
+                        if (var["date"].weekday() + 1 == required.dayOfWeek  # Convert 0-6 to 1-7
                             and var["period"] == required.period)
                     ]
                     
@@ -74,23 +73,22 @@ class RequiredPeriodsConstraint(BaseConstraint):
 
             # Check each required period
             for required in class_obj.weeklySchedule.requiredPeriods:
-                required_date = datetime.strptime(required.date, "%Y-%m-%d")
                 matching = [
                     a for a in class_assignments
-                    if (a["date"].date() == required_date.date()
-                        and a["timeSlot"]["period"] == required.period)
+                    if (datetime.fromisoformat(a["date"]).weekday() + 1 == required.dayOfWeek
+                        and a["timeSlot"].period == required.period)
                 ]
 
                 if not matching:
                     msg = (f"Class {class_obj.name} is missing required assignment "
-                          f"on {required.date} period {required.period}")
+                          f"on day {required.dayOfWeek} period {required.period}")
                     print(f"Violation: {msg}")
                     violations.append(ConstraintViolation(
                         message=msg,
                         severity="error",
                         context={
                             "name": class_obj.name,
-                            "date": required.date,
+                            "dayOfWeek": required.dayOfWeek,
                             "period": required.period
                         }
                     ))

@@ -1,6 +1,10 @@
 import pytest
+import logging
+import csv
 from datetime import datetime, timedelta
-from typing import List
+from pathlib import Path
+from typing import List, Dict
+import time
 from app.models import (
     ScheduleRequest,
     Class,
@@ -92,4 +96,65 @@ def base_schedule_request(
         startDate=date_range["start"],
         endDate=date_range["end"],
         constraints=base_schedule_constraints
+    )
+
+@pytest.fixture(scope="session")
+def setup_logging():
+    """Configure logging for tests"""
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('test_execution.log')
+        ]
+    )
+    return logging.getLogger('scheduler_tests')
+
+@pytest.fixture(scope="session")
+def performance_logger(setup_logging):
+    """Logger specifically for performance metrics"""
+    logger = logging.getLogger('performance_metrics')
+    logger.setLevel(logging.INFO)
+    return logger
+
+@pytest.fixture
+def timer():
+    """Timer utility for performance measurements"""
+    class Timer:
+        def __enter__(self):
+            self.start = time.perf_counter()
+            return self
+
+        def __exit__(self, *args):
+            self.end = time.perf_counter()
+            self.duration = self.end - self.start
+
+    return Timer()
+
+@pytest.fixture(scope="session")
+def csv_data():
+    """Load Schedule_From_Json_Corrected.csv data"""
+    csv_path = Path(__file__).parent.parent / 'data' / 'Schedule_From_Json_Corrected.csv'
+    classes = []
+    
+    with open(csv_path, 'r') as f:
+        reader = csv.DictReader(f)
+        classes = [row for row in reader]
+    
+    return classes
+
+@pytest.fixture
+def integration_constraints() -> ScheduleConstraints:
+    """Schedule constraints specifically for integration testing"""
+    start_date = datetime.now()
+    end_date = start_date + timedelta(days=7)
+    return ScheduleConstraints(
+        maxClassesPerDay=4,
+        maxClassesPerWeek=15,
+        minPeriodsPerWeek=1,
+        maxConsecutiveClasses=2,
+        consecutiveClassesRule="soft",
+        startDate=start_date.strftime("%Y-%m-%d"),
+        endDate=end_date.strftime("%Y-%m-%d")
     )

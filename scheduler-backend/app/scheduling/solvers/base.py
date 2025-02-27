@@ -267,7 +267,7 @@ class BaseSolver:
         # Create variables
         for class_obj in context.request.classes:
             print(f"\nCreating variables for class {class_obj.name}:")
-            print(f"- Conflicts: {len(class_obj.conflicts)}")
+            print(f"- Conflicts: {len(class_obj.weeklySchedule.conflicts)}")
             
             current_date = context.start_date
             class_vars = 0
@@ -279,7 +279,7 @@ class BaseSolver:
                     # Get conflicts for this day
                     conflicts = {
                         conflict.period
-                        for conflict in class_obj.conflicts
+                        for conflict in class_obj.weeklySchedule.conflicts
                         if conflict.dayOfWeek == weekday
                     }
                     

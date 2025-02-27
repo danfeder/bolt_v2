@@ -18,6 +18,22 @@ class TimeSlotGenerator:
     @staticmethod
     def create_time_slot(period: int = 1) -> TimeSlot:
         return TimeSlot(dayOfWeek=1, period=period)
+        
+    @staticmethod
+    def create_daily_pattern(period: int) -> list[TimeSlot]:
+        """
+        Create a pattern of TimeSlots for a specific period across all weekdays
+        
+        Args:
+            period: The period number to create slots for
+            
+        Returns:
+            List of TimeSlots, one for each weekday with the specified period
+        """
+        return [
+            TimeSlot(dayOfWeek=day, period=period)
+            for day in range(1, 6)  # Monday=1 through Friday=5
+        ]
 
 class ClassGenerator:
     """Generate test classes"""
@@ -25,11 +41,12 @@ class ClassGenerator:
     @staticmethod
     def create_class(
         name: str = "Test Class",
+        class_id: str = None,
         instructor: str = "default_instructor",
         weekly_schedule: WeeklySchedule = None
     ) -> Class:
         return Class(
-            id=name,  # Use name as ID for testing
+            id=class_id or name,  # Use provided class_id or fall back to name
             name=name,
             grade="Test",  # Add required grade field
             instructor=instructor,
@@ -65,6 +82,55 @@ class InstructorAvailabilityGenerator:
             preferredSlots=[],
             avoidSlots=[]
         )
+
+    @staticmethod
+    def create_weekly_availability(
+        start_date: datetime,
+        weeks: int = 1,
+        unavailable_pattern: list[TimeSlot] = None
+    ) -> list[InstructorAvailability]:
+        """
+        Create instructor availability for a specified number of weeks
+        
+        Args:
+            start_date: Starting date for availability
+            weeks: Number of weeks to generate
+            unavailable_pattern: Optional list of TimeSlots representing unavailable periods
+            
+        Returns:
+            List of InstructorAvailability objects
+        """
+        availabilities = []
+        current_date = start_date
+        
+        for _ in range(weeks * 5):  # 5 days per week
+            # Skip weekends
+            while current_date.weekday() >= 5:  # Saturday = 5, Sunday = 6
+                current_date += timedelta(days=1)
+            
+            # Default to all periods available (1-8)
+            periods = list(range(1, 9))
+            
+            # Remove unavailable periods for this day if specified
+            if unavailable_pattern:
+                for slot in unavailable_pattern:
+                    if slot.dayOfWeek == current_date.weekday() + 1:
+                        if slot.period in periods:
+                            periods.remove(slot.period)
+            
+            availabilities.append(
+                InstructorAvailability(
+                    date=current_date,
+                    periods=periods,
+                    unavailableSlots=[],
+                    preferredSlots=[],
+                    avoidSlots=[]
+                )
+            )
+            
+            current_date += timedelta(days=1)
+            
+        return availabilities
 
 class ScheduleRequestGenerator:
     """Generate test schedule requests"""
