@@ -1,6 +1,7 @@
 """Genetic algorithm optimizer for schedule generation."""
 import time
-from typing import Optional
+from typing import List, Optional, Tuple, Dict, Any
+import multiprocessing
 
 from ....models import (
     ScheduleRequest,
@@ -12,6 +13,7 @@ from .chromosome import ScheduleChromosome
 from .population import PopulationManager
 from .fitness import FitnessCalculator
 from .adaptation import AdaptiveController
+from .parallel import parallel_map, determine_worker_count
 
 class GeneticOptimizer:
     """Main genetic algorithm optimizer class."""
@@ -27,7 +29,9 @@ class GeneticOptimizer:
         use_adaptive_control: bool = True,
         adaptation_interval: int = 5,
         diversity_threshold: float = 0.15,
-        adaptation_strength: float = 0.5
+        adaptation_strength: float = 0.5,
+        parallel_fitness: bool = True,
+        max_workers: int = None
     ):
         """
         Initialize genetic optimizer.
@@ -43,6 +47,8 @@ class GeneticOptimizer:
             adaptation_interval: Generations between parameter adjustments
             diversity_threshold: Diversity threshold for adaptation
             adaptation_strength: How strongly to adapt parameters (0.0-1.0)
+            parallel_fitness: Whether to use parallel fitness evaluation
+            max_workers: Maximum number of worker processes (None for auto)
         """
         self.population_size = population_size
         self.elite_size = elite_size
@@ -51,6 +57,12 @@ class GeneticOptimizer:
         self.max_generations = max_generations
         self.convergence_threshold = convergence_threshold
         self.use_adaptive_control = use_adaptive_control
+        self.parallel_fitness = parallel_fitness
+        
+        # Determine worker count if using parallel processing
+        self.max_workers = max_workers
+        if parallel_fitness and max_workers is None:
+            self.max_workers = determine_worker_count()
         
         # Initialize adaptive controller if enabled
         self.adaptive_controller = None
@@ -67,6 +79,37 @@ class GeneticOptimizer:
         self.population_manager: Optional[PopulationManager] = None
         self.fitness_calculator: Optional[FitnessCalculator] = None
         
+    def _evaluate_fitness_parallel(self, chromosomes: List[ScheduleChromosome]) -> None:
+        """
+        Evaluate fitness for a list of chromosomes in parallel.
+        
+        Args:
+            chromosomes: List of chromosomes to evaluate
+        """
+        if not chromosomes:
+            return
+            
+        # Use serial processing for small batches or if parallel is disabled
+        if len(chromosomes) <= 4 or not self.parallel_fitness:
+            for chromosome in chromosomes:
+                chromosome.fitness = self.fitness_calculator.calculate_fitness(chromosome)
+            return
+        
+        # Create a worker function that can be pickled for multiprocessing
+        def evaluate_fitness(chromosome):
+            return self.fitness_calculator.calculate_fitness(chromosome)
+        
+        # Run fitness evaluation in parallel
+        fitness_values = parallel_map(
+            evaluate_fitness, 
+            chromosomes,
+            max_workers=self.max_workers
+        )
+        
+        # Update chromosome fitness values
+        for chromosome, fitness in zip(chromosomes, fitness_values):
+            chromosome.fitness = fitness
+    
     def optimize(
         self,
         request: ScheduleRequest,
@@ -93,12 +136,13 @@ class GeneticOptimizer:
             request=request,
             elite_size=self.elite_size,
             mutation_rate=self.mutation_rate,
-            crossover_rate=self.crossover_rate
+            crossover_rate=self.crossover_rate,
+            crossover_methods=["single_point", "two_point", "uniform", "order"]
         )
         
-        # Calculate initial fitness for population
-        for chromosome in self.population_manager.population:
-            chromosome.fitness = self.fitness_calculator.calculate_fitness(chromosome)
+        # Calculate initial fitness for population (in parallel if enabled)
+        print(f"Evaluating initial population fitness (parallel={self.parallel_fitness}, workers={self.max_workers})")
+        self._evaluate_fitness_parallel(self.population_manager.population)
         
         # Track best solution and its fitness
         best_solution = None
@@ -116,9 +160,8 @@ class GeneticOptimizer:
             # Evolve population
             self.population_manager.evolve()
             
-            # Update fitness for new population
-            for chromosome in self.population_manager.population:
-                chromosome.fitness = self.fitness_calculator.calculate_fitness(chromosome)
+            # Update fitness for new population (in parallel if enabled)
+            self._evaluate_fitness_parallel(self.population_manager.population)
             
             # Get current best solution
             current_best = self.population_manager.get_best_solution()
@@ -137,7 +180,15 @@ class GeneticOptimizer:
             
             # Get population statistics
             best, avg, diversity = self.population_manager.get_population_stats()
+            
+            # Output generation statistics
             print(f"Generation {generation}: Best = {best:.2f}, Avg = {avg:.2f}, Diversity = {diversity:.2f}")
+            
+            # Every 10 generations, print method statistics
+            if generation > 0 and generation % 10 == 0:
+                method_weights = self.population_manager.crossover_method_weights
+                print(f"  Crossover method weights: " + 
+                      ", ".join([f"{m}={w:.2f}" for m, w in method_weights.items()]))
             
             # Apply adaptive parameter control if enabled
             if self.use_adaptive_control and self.adaptive_controller:

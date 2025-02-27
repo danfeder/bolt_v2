@@ -94,15 +94,53 @@ class ScheduleChromosome:
                 # Replace with a new random gene for the same class
                 self.genes[i] = self._create_random_gene(self.genes[i].class_id)
     
-    def crossover(self, other: 'ScheduleChromosome') -> tuple['ScheduleChromosome', 'ScheduleChromosome']:
+    def crossover(self, other: 'ScheduleChromosome', method: str = "auto") -> tuple['ScheduleChromosome', 'ScheduleChromosome']:
         """
         Perform crossover with another chromosome.
         
-        Uses single-point crossover to create two offspring.
+        Args:
+            other: The other parent chromosome
+            method: Crossover method to use:
+                - "single_point": Classic single-point crossover
+                - "two_point": Two-point crossover
+                - "uniform": Uniform crossover with 0.5 probability for each gene
+                - "order": Order-based crossover that preserves relative ordering
+                - "auto": Automatically select the best method based on chromosome
+                
+        Returns:
+            A tuple of two child chromosomes
         """
         if len(self.genes) != len(other.genes):
             raise ValueError("Chromosomes must have same number of genes for crossover")
             
+        # Choose method if auto
+        if method == "auto":
+            # Use different methods based on problem characteristics
+            if len(self.genes) <= 10:
+                method = "uniform"  # Good for small chromosomes
+            elif self.request and self.request.constraints.maxClassesPerDay > 0:
+                method = "order"    # Good for preserving scheduling patterns
+            else:
+                method = random.choice(["single_point", "two_point", "uniform"])
+                
+        # Execute the selected crossover method
+        if method == "single_point":
+            return self._single_point_crossover(other)
+        elif method == "two_point":
+            return self._two_point_crossover(other)
+        elif method == "uniform":
+            return self._uniform_crossover(other)
+        elif method == "order":
+            return self._order_crossover(other)
+        else:
+            raise ValueError(f"Unknown crossover method: {method}")
+    
+    def _single_point_crossover(self, other: 'ScheduleChromosome') -> tuple['ScheduleChromosome', 'ScheduleChromosome']:
+        """
+        Perform single-point crossover with another chromosome.
+        
+        This is the classic crossover that splits the chromosome at a random point.
+        """
         # Create new chromosomes
         child1 = ScheduleChromosome(self.request)
         child2 = ScheduleChromosome(self.request)
@@ -115,6 +153,147 @@ class ScheduleChromosome:
         child2.genes = other.genes[:crossover_point] + self.genes[crossover_point:]
         
         return child1, child2
+    
+    def _two_point_crossover(self, other: 'ScheduleChromosome') -> tuple['ScheduleChromosome', 'ScheduleChromosome']:
+        """
+        Perform two-point crossover with another chromosome.
+        
+        Takes a section from the middle of one parent and combines with
+        the beginning and end of the other parent.
+        """
+        # Create new chromosomes
+        child1 = ScheduleChromosome(self.request)
+        child2 = ScheduleChromosome(self.request)
+        
+        # Select two crossover points
+        length = len(self.genes)
+        point1 = random.randint(0, length - 1)
+        point2 = random.randint(point1 + 1, length)
+        
+        # Create children by combining genes from parents
+        child1.genes = (
+            self.genes[:point1] +
+            other.genes[point1:point2] + 
+            self.genes[point2:]
+        )
+        
+        child2.genes = (
+            other.genes[:point1] +
+            self.genes[point1:point2] + 
+            other.genes[point2:]
+        )
+        
+        return child1, child2
+    
+    def _uniform_crossover(self, other: 'ScheduleChromosome') -> tuple['ScheduleChromosome', 'ScheduleChromosome']:
+        """
+        Perform uniform crossover with another chromosome.
+        
+        Each gene has a 50% chance of coming from either parent.
+        This provides more mixing and is better for some problems.
+        """
+        # Create new chromosomes
+        child1 = ScheduleChromosome(self.request)
+        child2 = ScheduleChromosome(self.request)
+        
+        child1.genes = []
+        child2.genes = []
+        
+        # For each gene position, randomly select from either parent
+        for i in range(len(self.genes)):
+            # Flip a coin for each gene
+            if random.random() < 0.5:
+                child1.genes.append(self.genes[i])
+                child2.genes.append(other.genes[i])
+            else:
+                child1.genes.append(other.genes[i])
+                child2.genes.append(self.genes[i])
+        
+        return child1, child2
+    
+    def _order_crossover(self, other: 'ScheduleChromosome') -> tuple['ScheduleChromosome', 'ScheduleChromosome']:
+        """
+        Perform order-based crossover with another chromosome.
+        
+        This preserves the relative ordering of genes, which is important
+        for scheduling problems where the order of classes matters.
+        """
+        # Create new chromosomes
+        child1 = ScheduleChromosome(self.request)
+        child2 = ScheduleChromosome(self.request)
+        
+        length = len(self.genes)
+        
+        # Select a random segment
+        start = random.randint(0, length - 2)
+        end = random.randint(start + 1, length - 1)
+        
+        # Create a map of class IDs to genes for quick lookup
+        self_class_map = {gene.class_id: gene for gene in self.genes}
+        other_class_map = {gene.class_id: gene for gene in other.genes}
+        
+        # Get class IDs from the segments we'll preserve
+        segment1 = [gene.class_id for gene in self.genes[start:end]]
+        segment2 = [gene.class_id for gene in other.genes[start:end]]
+        
+        # Initialize child genes
+        child1.genes = [None] * length
+        child2.genes = [None] * length
+        
+        # Copy the selected segments
+        for i in range(start, end):
+            child1.genes[i] = self.genes[i]
+            child2.genes[i] = other.genes[i]
+        
+        # Fill remaining positions while preserving order
+        self._fill_remaining_order_based(child1, other, segment1, start, end)
+        self._fill_remaining_order_based(child2, self, segment2, start, end)
+        
+        return child1, child2
+    
+    def _fill_remaining_order_based(
+        self, 
+        child: 'ScheduleChromosome', 
+        donor: 'ScheduleChromosome',
+        used_classes: List[str],
+        start: int,
+        end: int
+    ) -> None:
+        """
+        Helper method for order crossover to fill remaining positions.
+        
+        Args:
+            child: The child chromosome to fill
+            donor: The chromosome providing the genes for remaining positions
+            used_classes: List of class IDs already used in the fixed segment
+            start: Start index of the fixed segment
+            end: End index of the fixed segment
+        """
+        length = len(child.genes)
+        donor_classes = [gene.class_id for gene in donor.genes]
+        
+        # Rearrange the donor classes to put the used ones at the end
+        donor_order = []
+        for class_id in donor_classes:
+            if class_id not in used_classes:
+                donor_order.append(class_id)
+        
+        # Fill positions before the fixed segment
+        idx = 0
+        for i in range(0, start):
+            child.genes[i] = next(
+                gene for gene in donor.genes 
+                if gene.class_id == donor_order[idx]
+            )
+            idx += 1
+            
+        # Fill positions after the fixed segment
+        for i in range(end, length):
+            child.genes[i] = next(
+                gene for gene in donor.genes 
+                if gene.class_id == donor_order[idx]
+            )
+            idx += 1
     
     def encode(self, schedule: ScheduleResponse) -> None:
         """Convert a ScheduleResponse into chromosome representation."""

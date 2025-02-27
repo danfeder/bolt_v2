@@ -1,6 +1,6 @@
 """Component configuration for solvers"""
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
+from typing import List, Optional
 import os
 
 from ..core import Constraint, Objective
@@ -18,10 +18,20 @@ class GeneticConfig:
     ADAPTATION_INTERVAL: int = 5
     DIVERSITY_THRESHOLD: float = 0.15
     ADAPTATION_STRENGTH: float = 0.5
+    PARALLEL_FITNESS: bool = True
+    CROSSOVER_METHODS: List[str] = field(default_factory=lambda: ["single_point", "two_point", "uniform", "order"])
     
     @classmethod
     def from_env(cls) -> 'GeneticConfig':
         """Create config from environment variables"""
+        # Parse crossover methods if provided
+        crossover_methods_str = os.getenv('GA_CROSSOVER_METHODS', '')
+        crossover_methods = (
+            crossover_methods_str.split(',') 
+            if crossover_methods_str else 
+            ["single_point", "two_point", "uniform", "order"]
+        )
+        
         return cls(
             POPULATION_SIZE=int(os.getenv('GA_POPULATION_SIZE', '100')),
             ELITE_SIZE=int(os.getenv('GA_ELITE_SIZE', '2')),
@@ -32,7 +42,9 @@ class GeneticConfig:
             USE_ADAPTIVE_CONTROL=bool(int(os.getenv('GA_USE_ADAPTIVE_CONTROL', '1'))),
             ADAPTATION_INTERVAL=int(os.getenv('GA_ADAPTATION_INTERVAL', '5')),
             DIVERSITY_THRESHOLD=float(os.getenv('GA_DIVERSITY_THRESHOLD', '0.15')),
-            ADAPTATION_STRENGTH=float(os.getenv('GA_ADAPTATION_STRENGTH', '0.5'))
+            ADAPTATION_STRENGTH=float(os.getenv('GA_ADAPTATION_STRENGTH', '0.5')),
+            PARALLEL_FITNESS=bool(int(os.getenv('GA_PARALLEL_FITNESS', '1'))),
+            CROSSOVER_METHODS=crossover_methods
         )
 
 # Feature flags

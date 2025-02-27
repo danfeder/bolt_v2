@@ -43,7 +43,9 @@ class UnifiedSolver(BaseSolver):
                 use_adaptive_control=GENETIC_CONFIG.USE_ADAPTIVE_CONTROL,
                 adaptation_interval=GENETIC_CONFIG.ADAPTATION_INTERVAL,
                 diversity_threshold=GENETIC_CONFIG.DIVERSITY_THRESHOLD,
-                adaptation_strength=GENETIC_CONFIG.ADAPTATION_STRENGTH
+                adaptation_strength=GENETIC_CONFIG.ADAPTATION_STRENGTH,
+                parallel_fitness=GENETIC_CONFIG.PARALLEL_FITNESS,
+                max_workers=None  # Auto-detect
             )
             if config.ENABLE_GENETIC_OPTIMIZATION
             else None
@@ -94,11 +96,16 @@ class UnifiedSolver(BaseSolver):
         print(f"- Genetic optimization enabled: {config.ENABLE_GENETIC_OPTIMIZATION}")
         if config.ENABLE_GENETIC_OPTIMIZATION:
             print("\nGenetic algorithm configuration:")
+            print(f"- Population size: {config.GENETIC_CONFIG.POPULATION_SIZE}")
+            print(f"- Elite size: {config.GENETIC_CONFIG.ELITE_SIZE}")
+            print(f"- Max generations: {config.GENETIC_CONFIG.MAX_GENERATIONS}")
+            print(f"- Parallel fitness evaluation: {config.GENETIC_CONFIG.PARALLEL_FITNESS}")
             print(f"- Adaptive control enabled: {config.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL}")
             if config.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL:
                 print(f"- Adaptation interval: {config.GENETIC_CONFIG.ADAPTATION_INTERVAL} generations")
                 print(f"- Diversity threshold: {config.GENETIC_CONFIG.DIVERSITY_THRESHOLD}")
                 print(f"- Adaptation strength: {config.GENETIC_CONFIG.ADAPTATION_STRENGTH}")
+            print(f"- Available crossover methods: {', '.join(config.GENETIC_CONFIG.CROSSOVER_METHODS)}")
         print("\nConstraints:")
         for constraint in self.constraints:
             print(f"- {constraint.name}")
