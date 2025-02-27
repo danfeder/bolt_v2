@@ -14,6 +14,10 @@ class GeneticConfig:
     CROSSOVER_RATE: float = 0.8
     MAX_GENERATIONS: int = 100
     CONVERGENCE_THRESHOLD: float = 0.01
+    USE_ADAPTIVE_CONTROL: bool = True
+    ADAPTATION_INTERVAL: int = 5
+    DIVERSITY_THRESHOLD: float = 0.15
+    ADAPTATION_STRENGTH: float = 0.5
     
     @classmethod
     def from_env(cls) -> 'GeneticConfig':
@@ -24,7 +28,11 @@ class GeneticConfig:
             MUTATION_RATE=float(os.getenv('GA_MUTATION_RATE', '0.1')),
             CROSSOVER_RATE=float(os.getenv('GA_CROSSOVER_RATE', '0.8')),
             MAX_GENERATIONS=int(os.getenv('GA_MAX_GENERATIONS', '100')),
-            CONVERGENCE_THRESHOLD=float(os.getenv('GA_CONVERGENCE_THRESHOLD', '0.01'))
+            CONVERGENCE_THRESHOLD=float(os.getenv('GA_CONVERGENCE_THRESHOLD', '0.01')),
+            USE_ADAPTIVE_CONTROL=bool(int(os.getenv('GA_USE_ADAPTIVE_CONTROL', '1'))),
+            ADAPTATION_INTERVAL=int(os.getenv('GA_ADAPTATION_INTERVAL', '5')),
+            DIVERSITY_THRESHOLD=float(os.getenv('GA_DIVERSITY_THRESHOLD', '0.15')),
+            ADAPTATION_STRENGTH=float(os.getenv('GA_ADAPTATION_STRENGTH', '0.5'))
         )
 
 # Feature flags
@@ -38,6 +46,15 @@ GENETIC_CONFIG = GeneticConfig.from_env()
 
 # Time limits
 SOLVER_TIME_LIMIT_SECONDS = int(os.getenv('SOLVER_TIME_LIMIT', '300'))
+
+# Objective weights
+WEIGHTS = {
+    'required_periods': 10000,
+    'day_usage': 2000,
+    'final_week_compression': 3000,
+    'daily_balance': 1500,
+    'distribution': 1000,
+}
 
 # Constraints
 from ..constraints.assignment import SingleAssignmentConstraint, NoOverlapConstraint

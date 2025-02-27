@@ -11,6 +11,7 @@ from ....models import (
 from .chromosome import ScheduleChromosome
 from .population import PopulationManager
 from .fitness import FitnessCalculator
+from .adaptation import AdaptiveController
 
 class GeneticOptimizer:
     """Main genetic algorithm optimizer class."""
@@ -22,7 +23,11 @@ class GeneticOptimizer:
         mutation_rate: float = 0.1,
         crossover_rate: float = 0.8,
         max_generations: int = 100,
-        convergence_threshold: float = 0.01
+        convergence_threshold: float = 0.01,
+        use_adaptive_control: bool = True,
+        adaptation_interval: int = 5,
+        diversity_threshold: float = 0.15,
+        adaptation_strength: float = 0.5
     ):
         """
         Initialize genetic optimizer.
@@ -34,6 +39,10 @@ class GeneticOptimizer:
             crossover_rate: Probability of crossover between pairs
             max_generations: Maximum number of generations to evolve
             convergence_threshold: Minimum improvement required to continue
+            use_adaptive_control: Whether to use adaptive parameter control
+            adaptation_interval: Generations between parameter adjustments
+            diversity_threshold: Diversity threshold for adaptation
+            adaptation_strength: How strongly to adapt parameters (0.0-1.0)
         """
         self.population_size = population_size
         self.elite_size = elite_size
@@ -41,6 +50,18 @@ class GeneticOptimizer:
         self.crossover_rate = crossover_rate
         self.max_generations = max_generations
         self.convergence_threshold = convergence_threshold
+        self.use_adaptive_control = use_adaptive_control
+        
+        # Initialize adaptive controller if enabled
+        self.adaptive_controller = None
+        if use_adaptive_control:
+            self.adaptive_controller = AdaptiveController(
+                base_mutation_rate=mutation_rate,
+                base_crossover_rate=crossover_rate,
+                diversity_threshold=diversity_threshold,
+                adaptation_strength=adaptation_strength,
+                adaptation_interval=adaptation_interval
+            )
         
         # These will be set when optimize is called
         self.population_manager: Optional[PopulationManager] = None
@@ -117,6 +138,19 @@ class GeneticOptimizer:
             # Get population statistics
             best, avg, diversity = self.population_manager.get_population_stats()
             print(f"Generation {generation}: Best = {best:.2f}, Avg = {avg:.2f}, Diversity = {diversity:.2f}")
+            
+            # Apply adaptive parameter control if enabled
+            if self.use_adaptive_control and self.adaptive_controller:
+                # Update parameters based on population metrics
+                new_mutation_rate, new_crossover_rate = self.adaptive_controller.adapt_parameters(
+                    generation, best, avg, diversity
+                )
+                
+                # Apply new parameters to population manager
+                if self.population_manager.mutation_rate != new_mutation_rate or \
+                   self.population_manager.crossover_rate != new_crossover_rate:
+                    self.population_manager.mutation_rate = new_mutation_rate
+                    self.population_manager.crossover_rate = new_crossover_rate
             
             # Check convergence
             if generations_without_improvement >= 20:  # No improvement in 20 generations

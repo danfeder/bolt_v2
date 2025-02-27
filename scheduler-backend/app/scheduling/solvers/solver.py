@@ -23,6 +23,10 @@ class UnifiedSolver(BaseSolver):
     
     def __init__(self):
         super().__init__("cp-sat-unified")
+        # Initialize or-tools solver
+        from ortools.sat.python import cp_model
+        self.model = cp_model.CpModel()
+        self.solver = cp_model.CpSolver()
         self._last_run_metadata = None
         self._last_stable_response: Optional[ScheduleResponse] = None
         self._constraint_manager = ConstraintManager()
@@ -35,7 +39,11 @@ class UnifiedSolver(BaseSolver):
                 mutation_rate=GENETIC_CONFIG.MUTATION_RATE,
                 crossover_rate=GENETIC_CONFIG.CROSSOVER_RATE,
                 max_generations=GENETIC_CONFIG.MAX_GENERATIONS,
-                convergence_threshold=GENETIC_CONFIG.CONVERGENCE_THRESHOLD
+                convergence_threshold=GENETIC_CONFIG.CONVERGENCE_THRESHOLD,
+                use_adaptive_control=GENETIC_CONFIG.USE_ADAPTIVE_CONTROL,
+                adaptation_interval=GENETIC_CONFIG.ADAPTATION_INTERVAL,
+                diversity_threshold=GENETIC_CONFIG.DIVERSITY_THRESHOLD,
+                adaptation_strength=GENETIC_CONFIG.ADAPTATION_STRENGTH
             )
             if config.ENABLE_GENETIC_OPTIMIZATION
             else None
@@ -84,6 +92,13 @@ class UnifiedSolver(BaseSolver):
         print(f"- Solution comparison enabled: {config.ENABLE_SOLUTION_COMPARISON}")
         print(f"- Experimental distribution enabled: {config.ENABLE_EXPERIMENTAL_DISTRIBUTION}")
         print(f"- Genetic optimization enabled: {config.ENABLE_GENETIC_OPTIMIZATION}")
+        if config.ENABLE_GENETIC_OPTIMIZATION:
+            print("\nGenetic algorithm configuration:")
+            print(f"- Adaptive control enabled: {config.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL}")
+            if config.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL:
+                print(f"- Adaptation interval: {config.GENETIC_CONFIG.ADAPTATION_INTERVAL} generations")
+                print(f"- Diversity threshold: {config.GENETIC_CONFIG.DIVERSITY_THRESHOLD}")
+                print(f"- Adaptation strength: {config.GENETIC_CONFIG.ADAPTATION_STRENGTH}")
         print("\nConstraints:")
         for constraint in self.constraints:
             print(f"- {constraint.name}")
