@@ -66,6 +66,8 @@ class Class(BaseModel):
     id: str = Field(..., description="Unique identifier for the class")
     name: str
     grade: str = Field(..., description="Grade level (Pre-K through 5)")
+    gradeGroup: Optional[int] = Field(None, description="Numeric grade group (0=Pre-K, 1=K, 2-6=Grades 1-5)")
+    equipmentNeeds: Optional[List[str]] = Field(default_factory=list, description="Equipment needed for this class")
     weeklySchedule: WeeklySchedule = Field(default_factory=WeeklySchedule)
     
     model_config = {
@@ -74,6 +76,8 @@ class Class(BaseModel):
                 "id": "PK207",
                 "name": "PK207",
                 "grade": "Pre-K",
+                "gradeGroup": 0,
+                "equipmentNeeds": ["mats", "small balls"],
                 "weeklySchedule": {
                     "conflicts": [],
                     "preferredPeriods": [],
@@ -83,6 +87,23 @@ class Class(BaseModel):
             }
         }
     }
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        
+        # Auto-populate grade group if not provided
+        if self.gradeGroup is None:
+            # Map grade levels to numeric values
+            grade_map = {
+                "Pre-K": 0,
+                "K": 1,  # Kindergarten is standardized to "K"
+                "1": 2,
+                "2": 3,
+                "3": 4,
+                "4": 5,
+                "5": 6
+            }
+            self.gradeGroup = grade_map.get(self.grade, 0)
 
 class InstructorAvailability(BaseModel):
     date: datetime

@@ -77,6 +77,7 @@ ENABLE_GENETIC_OPTIMIZATION = bool(int(os.getenv('ENABLE_GENETIC_OPTIMIZATION', 
 ENABLE_CONSECUTIVE_CLASSES = bool(int(os.getenv('ENABLE_CONSECUTIVE_CLASSES', '1')))
 ENABLE_TEACHER_BREAKS = bool(int(os.getenv('ENABLE_TEACHER_BREAKS', '0')))
 ENABLE_WEIGHT_TUNING = bool(int(os.getenv('ENABLE_WEIGHT_TUNING', '0')))
+ENABLE_GRADE_GROUPING = bool(int(os.getenv('ENABLE_GRADE_GROUPING', '1')))
 
 # Load configurations
 GENETIC_CONFIG = GeneticConfig.from_env()
@@ -92,6 +93,7 @@ WEIGHTS = {
     'final_week_compression': 3000,
     'daily_balance': 1500,
     'distribution': 1000,
+    'grade_grouping': 1200,  # Higher weight than distribution but lower than daily_balance
     'avoid_periods': -500,
     'earlier_dates': 10,
 }
@@ -137,6 +139,7 @@ from ..objectives.distribution import DistributionObjective
 from ..objectives.day_usage import DayUsageObjective
 from ..objectives.final_week import FinalWeekCompressionObjective
 from ..objectives.daily_balance import DailyBalanceObjective
+from ..objectives.grade_grouping import GradeGroupingObjective
 
 def get_base_constraints() -> List[Constraint]:
     """Get the common constraints used by all solvers"""
@@ -175,4 +178,5 @@ def get_base_objectives() -> List[Objective]:
         FinalWeekCompressionObjective(),  # weight=3000
         DailyBalanceObjective(),        # weight=1500
         DistributionObjective(),        # weight=1000
+        GradeGroupingObjective(),       # weight=1200
     ]

@@ -99,6 +99,10 @@ class UnifiedSolver(BaseSolver):
         # Add experimental distribution optimization if enabled
         if config.ENABLE_EXPERIMENTAL_DISTRIBUTION:
             self.add_objective(DistributionObjective())
+            
+        # Add grade grouping objective if enabled
+        if config.ENABLE_GRADE_GROUPING:
+            self.add_objective(GradeGroupingObjective())
 
     def get_metrics(self) -> Dict[str, Any]:
         """Get metrics from last solver run if enabled"""
@@ -227,6 +231,7 @@ class UnifiedSolver(BaseSolver):
         logger.info(f"- Consecutive classes control enabled: {config.ENABLE_CONSECUTIVE_CLASSES}")
         logger.info(f"- Teacher breaks enabled: {config.ENABLE_TEACHER_BREAKS}")
         logger.info(f"- Weight tuning enabled: {config.ENABLE_WEIGHT_TUNING}")
+        logger.info(f"- Grade grouping enabled: {config.ENABLE_GRADE_GROUPING}")
         
         if config.ENABLE_GENETIC_OPTIMIZATION and self.use_genetic:
             logger.info("\nGenetic algorithm configuration:")
