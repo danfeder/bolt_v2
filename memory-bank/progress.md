@@ -194,22 +194,33 @@
 4. Need to validate quality improvements
 
 ## Next Actions 📝
-1. Genetic Algorithm Deployment
+1. Constraint Enhancements (See [constraint_enhancements.md](constraint_enhancements.md))
+   - Teacher Workload Management (consecutive class controls)
+   - Grade-Level Grouping optimization
+   - Weight Tuning System for automated constraint balancing
+   - Runtime Constraint Relaxation for difficult scheduling scenarios
+   - Seasonal Adaptations for different activity requirements
+   - Schedule Analysis Dashboard for quality visualization
+
+2. Genetic Algorithm Refinement
    - Create experiment framework for parameter tuning
    - Add visualization of population evolution
    - Develop hybrid approach combining GA with local search
    - Benchmark performance against other solvers
-2. Further Performance Improvements
+
+3. Further Performance Improvements
    - Implement checkpointing for long-running optimizations
    - Add island model for isolated sub-populations
    - Create specialized repair operators for invalid chromosomes
    - Add memoization for fitness evaluation
-3. Development Solver
+
+4. Development Solver
    - Test new search heuristics
    - Adjust objective weights
    - Try solver parameters
    - Document improvements
-4. Quality Metrics
+
+5. Quality Metrics
    - Define quality measures
    - Track improvements
    - Compare solutions
