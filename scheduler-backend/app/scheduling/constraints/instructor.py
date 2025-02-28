@@ -41,32 +41,70 @@ class InstructorAvailabilityConstraint(BaseConstraint):
     ) -> List[ConstraintViolation]:
         violations = []
         
+        # If there's no instructor availability, return immediately
+        if not context.request.instructorAvailability:
+            return violations
+            
         # Build lookup of unavailable periods
         unavailable_slots: Dict[str, Set[int]] = defaultdict(set)
         for avail in context.request.instructorAvailability:
             avail_date = avail.date
             if avail_date.tzinfo is None:
-                avail_date = avail_date.replace(tzinfo=UTC)
+                try:
+                    from datetime import timezone
+                    avail_date = avail_date.replace(tzinfo=timezone.utc)
+                except (ImportError, AttributeError):
+                    # Fallback if timezone import fails
+                    pass
             date_str = avail_date.date().isoformat()
             unavailable_slots[date_str].update(avail.periods)
         
         # Check each assignment
         for assignment in assignments:
-            date = assignment["date"].date().isoformat()
-            period = assignment["timeSlot"]["period"]
-            if date in unavailable_slots and period in unavailable_slots[date]:
-                violations.append(ConstraintViolation(
-                    message=(
-                        f"Class {assignment['name']} scheduled during "
-                        f"unavailable period {period} on {date}"
-                    ),
-                    severity="error",
-                    context={
-                        "name": assignment["name"],
-                        "date": date,
-                        "period": period
-                    }
-                ))
+            try:
+                # Parse data from assignment based on its type
+                if isinstance(assignment, dict):
+                    # Dictionary format
+                    class_name = assignment["name"]
+                    date_val = assignment["date"]
+                    # Handle date in various formats
+                    if hasattr(date_val, "date"):
+                        date_str = date_val.date().isoformat()
+                    else:
+                        # Parse ISO format string
+                        from datetime import datetime
+                        date_str = datetime.fromisoformat(date_val.replace('Z', '+00:00')).date().isoformat()
+                    
+                    # Get period (handling both dict and object)
+                    if isinstance(assignment["timeSlot"], dict):
+                        period = assignment["timeSlot"]["period"]
+                    else:
+                        period = assignment["timeSlot"].period
+                else:
+                    # Object format (ScheduleAssignment)
+                    class_name = assignment.name if hasattr(assignment, "name") else assignment.classId
+                    from datetime import datetime
+                    date_str = datetime.fromisoformat(assignment.date.replace('Z', '+00:00')).date().isoformat()
+                    period = assignment.timeSlot.period
+                
+                # Check if this assignment violates instructor availability
+                if date_str in unavailable_slots and period in unavailable_slots[date_str]:
+                    violations.append(ConstraintViolation(
+                        message=(
+                            f"Class {class_name} scheduled during "
+                            f"unavailable period {period} on {date_str}"
+                        ),
+                        severity="error",
+                        context={
+                            "name": class_name,
+                            "date": date_str,
+                            "period": period
+                        }
+                    ))
+            except Exception as e:
+                print(f"Error validating instructor availability: {str(e)}")
+                continue
+                
         return violations
 
 class ConsecutivePeriodConstraint(BaseConstraint):

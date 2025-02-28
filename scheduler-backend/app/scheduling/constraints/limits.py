@@ -188,13 +188,34 @@ class MinimumPeriodsConstraint(BaseConstraint):
         weekdays_by_week = defaultdict(set)  # Use set to count unique weekdays
         
         for assignment in assignments:
-            date = assignment["date"]
-            week_num = (date - context.start_date).days // 7
-            by_week[week_num] += 1
-            
-            # Only track weekdays (Mon-Fri)
-            if date.weekday() < 5:
-                weekdays_by_week[week_num].add(date.date())
+            try:
+                # Parse date from assignment based on its type
+                if isinstance(assignment, dict):
+                    # Dictionary format
+                    date_val = assignment["date"]
+                    # Handle date in various formats
+                    if hasattr(date_val, "date") and callable(getattr(date_val, "date")):
+                        date = date_val
+                    else:
+                        # Parse from ISO format string
+                        from datetime import datetime
+                        date = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+                else:
+                    # Object format (ScheduleAssignment)
+                    from datetime import datetime
+                    date = datetime.fromisoformat(assignment.date.replace('Z', '+00:00'))
+                
+                # Calculate week number
+                start_date = context.start_date
+                week_num = (date.date() - start_date.date()).days // 7
+                by_week[week_num] += 1
+                
+                # Only track weekdays (Mon-Fri)
+                if date.weekday() < 5:
+                    weekdays_by_week[week_num].add(date.date())
+            except Exception as e:
+                print(f"Error processing date in minimum periods constraint: {str(e)}")
+                continue
 
         print("Validating minimum periods across weeks:")                
         # Check for violations in each week

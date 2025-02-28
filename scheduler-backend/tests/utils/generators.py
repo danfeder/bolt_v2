@@ -45,13 +45,27 @@ class ClassGenerator:
         instructor: str = "default_instructor",
         weekly_schedule: WeeklySchedule = None
     ) -> Class:
-        return Class(
-            id=class_id or name,  # Use provided class_id or fall back to name
-            name=name,
-            grade="Test",  # Add required grade field
-            instructor=instructor,
-            weeklySchedule=weekly_schedule or WeeklySchedule()
-        )
+        # Handle both field naming conventions (id/classId)
+        class_args = {
+            "name": name,
+            "grade": "Test",  # Add required grade field
+            "instructor": instructor,
+            "weeklySchedule": weekly_schedule or WeeklySchedule()
+        }
+        
+        # Add ID field with the appropriate name
+        id_value = class_id or name
+        
+        # Try both field names to handle different model versions
+        try:
+            return Class(id=id_value, **class_args)
+        except TypeError:
+            try:
+                return Class(classId=id_value, **class_args)
+            except TypeError:
+                # If neither works, just return with the args we have
+                # The model should have at least one of these fields
+                return Class(**class_args)
         
     @staticmethod
     def create_classes(num_classes: int) -> list[Class]:

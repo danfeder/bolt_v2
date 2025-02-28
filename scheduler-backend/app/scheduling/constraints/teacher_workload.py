@@ -115,13 +115,42 @@ class ConsecutiveClassesConstraint(BaseConstraint):
         # Organize assignments by date and period
         by_date = {}
         for assignment in assignments:
-            date = assignment["date"]
-            period = assignment["timeSlot"]["period"]
-            
-            if date not in by_date:
-                by_date[date] = {}
+            try:
+                # Parse data from assignment based on its type
+                if isinstance(assignment, dict):
+                    # Dictionary format
+                    date_val = assignment["date"]
+                    # Handle date in various formats
+                    if hasattr(date_val, "date") and callable(getattr(date_val, "date")):
+                        date = date_val
+                    else:
+                        # Parse from ISO format string
+                        from datetime import datetime
+                        date = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+                    
+                    # Get period (handle different timeSlot formats)
+                    if isinstance(assignment["timeSlot"], dict):
+                        period = assignment["timeSlot"]["period"]
+                    else:
+                        period = assignment["timeSlot"].period
+                else:
+                    # Object format (ScheduleAssignment)
+                    from datetime import datetime
+                    date = datetime.fromisoformat(assignment.date.replace('Z', '+00:00'))
+                    period = assignment.timeSlot.period
                 
-            by_date[date][period] = assignment
+                # Convert date to date object for consistency
+                if hasattr(date, "date") and callable(getattr(date, "date")):
+                    date = date.date()
+                
+                # Initialize date dictionary if needed
+                if date not in by_date:
+                    by_date[date] = {}
+                    
+                by_date[date][period] = assignment
+            except Exception as e:
+                print(f"Error processing assignment in consecutive classes constraint: {str(e)}")
+                continue
         
         # Check for violations
         for date, periods in by_date.items():
@@ -246,13 +275,42 @@ class TeacherBreakConstraint(BaseConstraint):
         # Check for classes scheduled during required break periods
         by_date_period = {}
         for assignment in assignments:
-            date = assignment["date"]
-            period = assignment["timeSlot"]["period"]
-            
-            if date not in by_date_period:
-                by_date_period[date] = {}
+            try:
+                # Parse data from assignment based on its type
+                if isinstance(assignment, dict):
+                    # Dictionary format
+                    date_val = assignment["date"]
+                    # Handle date in various formats
+                    if hasattr(date_val, "date") and callable(getattr(date_val, "date")):
+                        date = date_val
+                    else:
+                        # Parse from ISO format string
+                        from datetime import datetime
+                        date = datetime.fromisoformat(date_val.replace('Z', '+00:00'))
+                    
+                    # Get period (handle different timeSlot formats)
+                    if isinstance(assignment["timeSlot"], dict):
+                        period = assignment["timeSlot"]["period"]
+                    else:
+                        period = assignment["timeSlot"].period
+                else:
+                    # Object format (ScheduleAssignment)
+                    from datetime import datetime
+                    date = datetime.fromisoformat(assignment.date.replace('Z', '+00:00'))
+                    period = assignment.timeSlot.period
                 
-            by_date_period[date][period] = assignment
+                # Convert date to date object for consistency
+                if hasattr(date, "date") and callable(getattr(date, "date")):
+                    date = date.date()
+                
+                # Initialize date dictionary if needed
+                if date not in by_date_period:
+                    by_date_period[date] = {}
+                    
+                by_date_period[date][period] = assignment
+            except Exception as e:
+                print(f"Error processing assignment in teacher break constraint: {str(e)}")
+                continue
         
         # Check for violations
         for date, periods in by_date_period.items():

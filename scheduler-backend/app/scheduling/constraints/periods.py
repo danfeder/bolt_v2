@@ -66,18 +66,35 @@ class RequiredPeriodsConstraint(BaseConstraint):
             print(f"Checking {len(class_obj.weeklySchedule.requiredPeriods)} required periods for {class_obj.name}")
 
             # Get assignments for this class
-            class_assignments = [
-                a for a in assignments if a["name"] == class_obj.name
-            ]
+            class_assignments = []
+            for a in assignments:
+                if isinstance(a, dict) and a.get("name") == class_obj.name:
+                    class_assignments.append(a)
+                elif hasattr(a, "classId") and a.classId == class_obj.name:
+                    class_assignments.append(a)
+            
             print(f"Found {len(class_assignments)} assignments")
 
             # Check each required period
             for required in class_obj.weeklySchedule.requiredPeriods:
-                matching = [
-                    a for a in class_assignments
-                    if (datetime.fromisoformat(a["date"]).weekday() + 1 == required.dayOfWeek
-                        and a["timeSlot"].period == required.period)
-                ]
+                matching = []
+                for a in class_assignments:
+                    if isinstance(a, dict):
+                        # Handle dict format
+                        date_str = a["date"]
+                        if isinstance(date_str, datetime):
+                            weekday = date_str.weekday() + 1
+                        else:
+                            weekday = datetime.fromisoformat(date_str).weekday() + 1
+                        
+                        period = a["timeSlot"].period if hasattr(a["timeSlot"], "period") else a["timeSlot"]["period"]
+                    else:
+                        # Handle object format
+                        weekday = datetime.fromisoformat(a.date).weekday() + 1
+                        period = a.timeSlot.period
+                    
+                    if weekday == required.dayOfWeek and period == required.period:
+                        matching.append(a)
 
                 if not matching:
                     msg = (f"Class {class_obj.name} is missing required assignment "
@@ -145,9 +162,20 @@ class ConflictPeriodsConstraint(BaseConstraint):
 
             # Check each assignment against conflicts
             for assignment in assignments:
-                if assignment["name"] == class_obj.name:
-                    weekday = assignment["date"].weekday() + 1
-                    period = assignment["timeSlot"]["period"]
+                # Handle different assignment formats (dict or object)
+                class_name = assignment.get("name") if isinstance(assignment, dict) else assignment.classId
+                
+                if class_name == class_obj.name:
+                    # Extract date and period based on assignment format
+                    if isinstance(assignment, dict):
+                        if isinstance(assignment["date"], datetime):
+                            weekday = assignment["date"].weekday() + 1
+                        else:
+                            weekday = datetime.fromisoformat(assignment["date"]).weekday() + 1
+                        period = assignment["timeSlot"]["period"] if isinstance(assignment["timeSlot"], dict) else assignment["timeSlot"].period
+                    else:
+                        weekday = datetime.fromisoformat(assignment.date).weekday() + 1
+                        period = assignment.timeSlot.period
                     
                     # Check if this period is in conflicts
                     for conflict in class_obj.weeklySchedule.conflicts:

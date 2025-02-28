@@ -90,7 +90,11 @@ class BaseSolver:
                 print(f"- Total available slots: {len(vars_list)}")
                 # Get class's conflicts
                 class_obj = next(c for c in request.classes if c.name == class_name)
-                print(f"- Conflict periods: {len(class_obj.conflicts)}")
+                # Class object may have conflicts directly or in weeklySchedule
+                if hasattr(class_obj, "conflicts") and class_obj.conflicts:
+                    print(f"- Conflict periods: {len(class_obj.conflicts)}")
+                elif hasattr(class_obj, "weeklySchedule") and hasattr(class_obj.weeklySchedule, "conflicts"):
+                    print(f"- Conflict periods: {len(class_obj.weeklySchedule.conflicts)}")
                 # Group by day
                 by_day = {}
                 for var in vars_list:
@@ -126,12 +130,18 @@ class BaseSolver:
             # Count conflicts per class to identify most constrained classes
             conflicts_by_class = {}
             for class_obj in context.request.classes:
-                conflicts_by_class[class_obj.name] = len(class_obj.conflicts)
+                # Handle different class models (direct conflicts or nested in weeklySchedule)
+                if hasattr(class_obj, "conflicts") and class_obj.conflicts:
+                    conflicts_by_class[class_obj.name] = len(class_obj.conflicts)
+                elif hasattr(class_obj, "weeklySchedule") and hasattr(class_obj.weeklySchedule, "conflicts"):
+                    conflicts_by_class[class_obj.name] = len(class_obj.weeklySchedule.conflicts)
+                else:
+                    conflicts_by_class[class_obj.name] = 0
             
             # Sort variables by number of conflicts (most constrained first)
             sorted_vars = sorted(
                 context.variables,
-                key=lambda v: (-conflicts_by_class[v["name"]], v["date"].toordinal(), v["period"])
+                key=lambda v: (-conflicts_by_class.get(v["name"], 0), v["date"].toordinal(), v["period"])
             )
             sorted_var_list = [v["variable"] for v in sorted_vars]
             
@@ -194,7 +204,7 @@ class BaseSolver:
                     daily={
                         date: DailyDistributionMetrics(
                             periodSpread=spread,
-                            teacherLoadVariance=metrics.teacher_load_variance.get(date, 0.0),
+                            instructorLoadVariance=metrics.teacher_load_variance.get(date, 0.0),
                             classesByPeriod=dict(metrics.classes_per_period.get(date, {}))  # Already string keys
                         )
                         for date, spread in metrics.period_spread.items()
@@ -288,12 +298,18 @@ class BaseSolver:
                         if period not in conflicts:
                             var_name = f"class_{class_obj.name}_{current_date.date()}_{period}"
                             var = context.model.NewBoolVar(var_name)
-                            context.variables.append({
+                            variable_data = {
                                 "variable": var,
                                 "name": class_obj.name,
                                 "date": current_date,
                                 "period": period
-                            })
+                            }
+                            
+                            # Add grade information if available
+                            if hasattr(class_obj, "grade"):
+                                variable_data["grade"] = class_obj.grade
+                                
+                            context.variables.append(variable_data)
                             class_vars += 1
                 current_date = current_date + timedelta(days=1)
             print(f"- Created {class_vars} variables")
@@ -339,7 +355,8 @@ class SolutionCallback(cp_model.CpSolverSolutionCallback):
                 assignments = by_day[date]
                 print(f"{date}: {len(assignments)} classes")
                 for assignment in sorted(assignments, key=lambda a: a.timeSlot.period):
-                    print(f"  Period {assignment.timeSlot.period}: {assignment.name}")
+                    name = assignment.classId if hasattr(assignment, "classId") else assignment.name
+                    print(f"  Period {assignment.timeSlot.period}: {name}")
         
         # Log every 3 seconds
         if (current_time - self._last_log_time) >= 3.0:
@@ -369,7 +386,8 @@ class SolutionCallback(cp_model.CpSolverSolutionCallback):
             if self.BooleanValue(var["variable"]):
                 assignments.append(
                     ScheduleAssignment(
-                        name=var["name"],
+                        classId=var["name"],  # Use class name as classId
+                        name=var["name"],     # Keep name for backward compatibility
                         date=var["date"].isoformat(),
                         timeSlot=TimeSlot(
                             dayOfWeek=var["date"].weekday() + 1,

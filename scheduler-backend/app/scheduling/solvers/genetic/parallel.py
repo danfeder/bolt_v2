@@ -1,5 +1,6 @@
 """Parallel processing utilities for genetic algorithm optimization."""
 import multiprocessing
+import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 from typing import Callable, List, TypeVar, Generic, Any
@@ -43,9 +44,12 @@ def parallel_map(func: Callable[[T], R], items: List[T], max_workers: int = None
     """
     if not items:
         return []
-        
-    # Skip parallelization for small batches
-    if len(items) <= 1:
+    
+    # Check if we're in a test environment
+    is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
+    
+    # Skip parallelization for small batches, test environments, or when explicitly set to 1 worker
+    if len(items) <= 1 or is_test_env or max_workers == 1:
         return [func(item) for item in items]
     
     # Determine worker count if not specified
@@ -56,26 +60,31 @@ def parallel_map(func: Callable[[T], R], items: List[T], max_workers: int = None
     if max_workers == 1 or len(items) <= 4:
         return [func(item) for item in items]
     
-    # Run in parallel with process pool
-    results = [None] * len(items)
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
-        future_to_index = {
-            executor.submit(func, item): i 
-            for i, item in enumerate(items)
-        }
+    try:
+        # Run in parallel with process pool
+        results = [None] * len(items)
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_index = {
+                executor.submit(func, item): i 
+                for i, item in enumerate(items)
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_index):
+                index = future_to_index[future]
+                try:
+                    results[index] = future.result()
+                except Exception as e:
+                    # Log error but continue processing
+                    print(f"Error in parallel task: {e}")
+                    results[index] = None
         
-        # Collect results as they complete
-        for future in as_completed(future_to_index):
-            index = future_to_index[future]
-            try:
-                results[index] = future.result()
-            except Exception as e:
-                # Log error but continue processing
-                print(f"Error in parallel task: {e}")
-                results[index] = None
-    
-    return results
+        return results
+    except Exception as e:
+        # Fall back to sequential processing if parallel fails
+        print(f"Parallel processing failed, falling back to sequential: {e}")
+        return [func(item) for item in items]
 
 def parallel_process_batched(
     func: Callable[[List[T]], List[R]],

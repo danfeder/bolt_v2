@@ -113,8 +113,26 @@ class RelaxableDailyLimitConstraint(RelaxableConstraint):
         # Count assignments per day
         by_date = defaultdict(int)
         for assignment in assignments:
-            date = assignment["date"].date() if hasattr(assignment["date"], "date") else assignment["date"]
-            by_date[date] += 1
+            try:
+                if isinstance(assignment, dict):
+                    # Dictionary format
+                    date_val = assignment["date"]
+                    # Handle date in various formats
+                    if hasattr(date_val, "date"):
+                        date = date_val.date()
+                    else:
+                        # Parse from ISO format string
+                        from datetime import datetime
+                        date = datetime.fromisoformat(date_val.replace('Z', '+00:00')).date()
+                else:
+                    # Object format (ScheduleAssignment)
+                    from datetime import datetime
+                    date = datetime.fromisoformat(assignment.date.replace('Z', '+00:00')).date()
+                
+                by_date[date] += 1
+            except Exception as e:
+                print(f"Error processing assignment date in daily limit: {str(e)}")
+                continue
         
         # Check for violations
         for date, count in by_date.items():
@@ -241,9 +259,40 @@ class RelaxableWeeklyLimitConstraint(RelaxableConstraint):
         # Count assignments per week
         by_week = defaultdict(int)
         for assignment in assignments:
-            date = assignment["date"]
-            week_num = (date - context.start_date).days // 7
-            by_week[week_num] += 1
+            try:
+                if isinstance(assignment, dict):
+                    # Dictionary format
+                    date_val = assignment["date"]
+                    # Handle date in various formats
+                    if hasattr(date_val, "date"):
+                        date = date_val.date()
+                    else:
+                        # Parse from ISO format string
+                        from datetime import datetime
+                        date = datetime.fromisoformat(date_val.replace('Z', '+00:00')).date()
+                else:
+                    # Object format (ScheduleAssignment)
+                    from datetime import datetime
+                    date_str = assignment.date.replace('Z', '+00:00')
+                    date = datetime.fromisoformat(date_str).date()
+                
+                # Convert date to datetime for comparison if needed
+                if isinstance(date, datetime.date) and not isinstance(date, datetime):
+                    date = datetime.combine(date, datetime.min.time())
+                
+                # Calculate week number based on starting date
+                start_date = context.start_date.date() if hasattr(context.start_date, "date") else context.start_date
+                if isinstance(date, datetime):
+                    date = date.date()
+                
+                if isinstance(start_date, datetime):
+                    start_date = start_date.date()
+                
+                week_num = (date - start_date).days // 7
+                by_week[week_num] += 1
+            except Exception as e:
+                print(f"Error processing assignment date in weekly limit: {str(e)}")
+                continue
         
         # Check for violations
         for week_num, count in by_week.items():

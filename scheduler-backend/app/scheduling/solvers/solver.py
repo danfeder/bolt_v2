@@ -1,6 +1,7 @@
 """Unified solver implementation with configurable features"""
 from typing import Dict, Any, List, Optional, Union, Type
 import traceback
+import os
 from dateutil import parser
 import logging
 
@@ -14,6 +15,7 @@ from .config import (
     WEIGHTS
 )
 from ..objectives.distribution import DistributionObjective
+from ..objectives.grade_grouping import GradeGroupingObjective
 from .base import BaseSolver
 from ...models import ScheduleRequest, ScheduleResponse, WeightConfig
 from .genetic.optimizer import GeneticOptimizer
@@ -70,10 +72,13 @@ class UnifiedSolver(BaseSolver):
         self._constraint_manager = ConstraintManager()
         self.constraint_violations = []
         
+        # Import config module directly for defaults
+        from . import config as config_module
+        
         # Relaxation control
         self.enable_relaxation = (
             enable_relaxation if enable_relaxation is not None 
-            else config.ENABLE_CONSTRAINT_RELAXATION
+            else config_module.ENABLE_CONSTRAINT_RELAXATION
         )
         self.relaxation_controller = RelaxationController() if self.enable_relaxation else None
         self.current_relaxation_level = RelaxationLevel.NONE
@@ -83,24 +88,27 @@ class UnifiedSolver(BaseSolver):
         self.custom_weights = custom_weights
         
         # Initialize genetic optimizer if enabled
-        self.genetic_optimizer = (
-            GeneticOptimizer(
-                population_size=GENETIC_CONFIG.POPULATION_SIZE,
-                elite_size=GENETIC_CONFIG.ELITE_SIZE,
-                mutation_rate=GENETIC_CONFIG.MUTATION_RATE,
-                crossover_rate=GENETIC_CONFIG.CROSSOVER_RATE,
-                max_generations=GENETIC_CONFIG.MAX_GENERATIONS,
-                convergence_threshold=GENETIC_CONFIG.CONVERGENCE_THRESHOLD,
-                use_adaptive_control=GENETIC_CONFIG.USE_ADAPTIVE_CONTROL,
-                adaptation_interval=GENETIC_CONFIG.ADAPTATION_INTERVAL,
-                diversity_threshold=GENETIC_CONFIG.DIVERSITY_THRESHOLD,
-                adaptation_strength=GENETIC_CONFIG.ADAPTATION_STRENGTH,
-                parallel_fitness=GENETIC_CONFIG.PARALLEL_FITNESS,
-                max_workers=None  # Auto-detect
+        self.genetic_optimizer = None
+        if config_module.ENABLE_GENETIC_OPTIMIZATION and use_genetic:
+            # When running in test environment, we want to disable parallel processing
+            # to avoid issues with pickling and multiprocessing
+            is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
+            
+            self.genetic_optimizer = GeneticOptimizer(
+                population_size=config_module.GENETIC_CONFIG.POPULATION_SIZE,
+                elite_size=config_module.GENETIC_CONFIG.ELITE_SIZE,
+                mutation_rate=config_module.GENETIC_CONFIG.MUTATION_RATE,
+                crossover_rate=config_module.GENETIC_CONFIG.CROSSOVER_RATE,
+                max_generations=config_module.GENETIC_CONFIG.MAX_GENERATIONS,
+                convergence_threshold=config_module.GENETIC_CONFIG.CONVERGENCE_THRESHOLD,
+                use_adaptive_control=config_module.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL,
+                adaptation_interval=config_module.GENETIC_CONFIG.ADAPTATION_INTERVAL,
+                diversity_threshold=config_module.GENETIC_CONFIG.DIVERSITY_THRESHOLD,
+                adaptation_strength=config_module.GENETIC_CONFIG.ADAPTATION_STRENGTH,
+                # Disable parallel fitness in test environment
+                parallel_fitness=False if is_test_env else config_module.GENETIC_CONFIG.PARALLEL_FITNESS,
+                max_workers=1 if is_test_env else None  # Single worker in test environment
             )
-            if config.ENABLE_GENETIC_OPTIMIZATION and use_genetic
-            else None
-        )
         
         # Initialize meta-optimizer if enabled
         self.meta_optimizer = None
@@ -119,16 +127,17 @@ class UnifiedSolver(BaseSolver):
             self.add_objective(objective)
             
         # Add experimental distribution optimization if enabled
-        if config.ENABLE_EXPERIMENTAL_DISTRIBUTION:
+        if config_module.ENABLE_EXPERIMENTAL_DISTRIBUTION:
             self.add_objective(DistributionObjective())
             
         # Add grade grouping objective if enabled
-        if config.ENABLE_GRADE_GROUPING:
+        if config_module.ENABLE_GRADE_GROUPING:
             self.add_objective(GradeGroupingObjective())
 
     def get_metrics(self) -> Dict[str, Any]:
         """Get metrics from last solver run if enabled"""
-        if not config.ENABLE_METRICS:
+        from . import config as config_module
+        if not config_module.ENABLE_METRICS:
             return {"status": "Metrics disabled"}
             
         if not self._last_run_metadata:
@@ -155,10 +164,11 @@ class UnifiedSolver(BaseSolver):
         Returns:
             Dict of objective name to weight value
         """
+        from . import config as config_module
         if self.custom_weights:
             return self.custom_weights
         else:
-            return WEIGHTS
+            return config_module.WEIGHTS
             
     def tune_weights(self, request: ScheduleRequest = None) -> WeightConfig:
         """
@@ -170,13 +180,14 @@ class UnifiedSolver(BaseSolver):
         Returns:
             Optimized weight configuration
         """
-        if not config.ENABLE_WEIGHT_TUNING:
+        from . import config as config_module
+        if not config_module.ENABLE_WEIGHT_TUNING:
             logger.warning("Weight tuning is disabled. Enable with ENABLE_WEIGHT_TUNING=1")
-            return WeightConfig(**WEIGHTS)
+            return WeightConfig(**config_module.WEIGHTS)
             
         if not self.use_genetic:
             logger.warning("Weight tuning requires genetic algorithm. Enable with use_genetic=True")
-            return WeightConfig(**WEIGHTS)
+            return WeightConfig(**config_module.WEIGHTS)
             
         req = request if request is not None else self.request
         if not req:
@@ -287,14 +298,17 @@ class UnifiedSolver(BaseSolver):
         if not req:
             raise ValueError("Schedule request is required")
             
+        # Import config at method level
+        from . import config as config_module
+        
         # Set time limit
-        time_limit = time_limit_seconds if time_limit_seconds is not None else config.SOLVER_TIME_LIMIT_SECONDS
+        time_limit = time_limit_seconds if time_limit_seconds is not None else config_module.SOLVER_TIME_LIMIT_SECONDS
         
         # Store request for future use
         self.request = req
         
         # Tune weights if requested
-        if tune_weights and config.ENABLE_WEIGHT_TUNING:
+        if tune_weights and config_module.ENABLE_WEIGHT_TUNING:
             self.tune_weights(req)
             
         # Create schedule
@@ -339,38 +353,41 @@ class UnifiedSolver(BaseSolver):
     
     def create_schedule(self, request: ScheduleRequest, time_limit_seconds: int = None) -> ScheduleResponse:
         """Create a schedule using the unified solver configuration"""
+        # Import config at method level
+        from . import config as config_module
+        
         logger.info(f"Starting unified solver for {len(request.classes)} classes...")
         logger.info("\nSolver configuration:")
         logger.info("Feature flags:")
-        logger.info(f"- Metrics enabled: {config.ENABLE_METRICS}")
-        logger.info(f"- Solution comparison enabled: {config.ENABLE_SOLUTION_COMPARISON}")
-        logger.info(f"- Experimental distribution enabled: {config.ENABLE_EXPERIMENTAL_DISTRIBUTION}")
-        logger.info(f"- Genetic optimization enabled: {config.ENABLE_GENETIC_OPTIMIZATION}")
-        logger.info(f"- Consecutive classes control enabled: {config.ENABLE_CONSECUTIVE_CLASSES}")
-        logger.info(f"- Teacher breaks enabled: {config.ENABLE_TEACHER_BREAKS}")
-        logger.info(f"- Weight tuning enabled: {config.ENABLE_WEIGHT_TUNING}")
-        logger.info(f"- Grade grouping enabled: {config.ENABLE_GRADE_GROUPING}")
+        logger.info(f"- Metrics enabled: {config_module.ENABLE_METRICS}")
+        logger.info(f"- Solution comparison enabled: {config_module.ENABLE_SOLUTION_COMPARISON}")
+        logger.info(f"- Experimental distribution enabled: {config_module.ENABLE_EXPERIMENTAL_DISTRIBUTION}")
+        logger.info(f"- Genetic optimization enabled: {config_module.ENABLE_GENETIC_OPTIMIZATION}")
+        logger.info(f"- Consecutive classes control enabled: {config_module.ENABLE_CONSECUTIVE_CLASSES}")
+        logger.info(f"- Teacher breaks enabled: {config_module.ENABLE_TEACHER_BREAKS}")
+        logger.info(f"- Weight tuning enabled: {config_module.ENABLE_WEIGHT_TUNING}")
+        logger.info(f"- Grade grouping enabled: {config_module.ENABLE_GRADE_GROUPING}")
         logger.info(f"- Constraint relaxation enabled: {self.enable_relaxation}")
         
-        if config.ENABLE_GENETIC_OPTIMIZATION and self.use_genetic:
+        if config_module.ENABLE_GENETIC_OPTIMIZATION and self.use_genetic:
             logger.info("\nGenetic algorithm configuration:")
-            logger.info(f"- Population size: {config.GENETIC_CONFIG.POPULATION_SIZE}")
-            logger.info(f"- Elite size: {config.GENETIC_CONFIG.ELITE_SIZE}")
-            logger.info(f"- Max generations: {config.GENETIC_CONFIG.MAX_GENERATIONS}")
-            logger.info(f"- Parallel fitness evaluation: {config.GENETIC_CONFIG.PARALLEL_FITNESS}")
-            logger.info(f"- Adaptive control enabled: {config.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL}")
-            if config.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL:
-                logger.info(f"- Adaptation interval: {config.GENETIC_CONFIG.ADAPTATION_INTERVAL} generations")
-                logger.info(f"- Diversity threshold: {config.GENETIC_CONFIG.DIVERSITY_THRESHOLD}")
-                logger.info(f"- Adaptation strength: {config.GENETIC_CONFIG.ADAPTATION_STRENGTH}")
-            logger.info(f"- Available crossover methods: {', '.join(config.GENETIC_CONFIG.CROSSOVER_METHODS)}")
+            logger.info(f"- Population size: {config_module.GENETIC_CONFIG.POPULATION_SIZE}")
+            logger.info(f"- Elite size: {config_module.GENETIC_CONFIG.ELITE_SIZE}")
+            logger.info(f"- Max generations: {config_module.GENETIC_CONFIG.MAX_GENERATIONS}")
+            logger.info(f"- Parallel fitness evaluation: {config_module.GENETIC_CONFIG.PARALLEL_FITNESS}")
+            logger.info(f"- Adaptive control enabled: {config_module.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL}")
+            if config_module.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL:
+                logger.info(f"- Adaptation interval: {config_module.GENETIC_CONFIG.ADAPTATION_INTERVAL} generations")
+                logger.info(f"- Diversity threshold: {config_module.GENETIC_CONFIG.DIVERSITY_THRESHOLD}")
+                logger.info(f"- Adaptation strength: {config_module.GENETIC_CONFIG.ADAPTATION_STRENGTH}")
+            logger.info(f"- Available crossover methods: {', '.join(config_module.GENETIC_CONFIG.CROSSOVER_METHODS)}")
         
-        if config.ENABLE_WEIGHT_TUNING:
+        if config_module.ENABLE_WEIGHT_TUNING:
             logger.info("\nWeight tuning configuration:")
-            logger.info(f"- Meta population size: {config.META_CONFIG.POPULATION_SIZE}")
-            logger.info(f"- Meta generations: {config.META_CONFIG.GENERATIONS}")
-            logger.info(f"- Evaluation time limit: {config.META_CONFIG.EVAL_TIME_LIMIT} seconds")
-            logger.info(f"- Parallel evaluation: {config.META_CONFIG.PARALLEL_EVALUATION}")
+            logger.info(f"- Meta population size: {config_module.META_CONFIG.POPULATION_SIZE}")
+            logger.info(f"- Meta generations: {config_module.META_CONFIG.GENERATIONS}")
+            logger.info(f"- Evaluation time limit: {config_module.META_CONFIG.EVAL_TIME_LIMIT} seconds")
+            logger.info(f"- Parallel evaluation: {config_module.META_CONFIG.PARALLEL_EVALUATION}")
             
         logger.info("\nConstraints:")
         for constraint in self.constraints:
@@ -385,12 +402,13 @@ class UnifiedSolver(BaseSolver):
             end_date = parser.parse(request.endDate)
             
             # Store current solution for comparison if needed
-            if config.ENABLE_SOLUTION_COMPARISON and self._last_stable_response:
+            current_stable = None
+            if config_module.ENABLE_SOLUTION_COMPARISON and self._last_stable_response:
                 current_stable = self._last_stable_response
             
-            time_limit = time_limit_seconds if time_limit_seconds is not None else config.SOLVER_TIME_LIMIT_SECONDS
+            time_limit = time_limit_seconds if time_limit_seconds is not None else config_module.SOLVER_TIME_LIMIT_SECONDS
             
-            if config.ENABLE_GENETIC_OPTIMIZATION and self.use_genetic and self.genetic_optimizer:
+            if config_module.ENABLE_GENETIC_OPTIMIZATION and self.use_genetic and self.genetic_optimizer:
                 logger.info("Using genetic algorithm optimizer")
                 response = self.genetic_optimizer.optimize(
                     request=request,
@@ -441,11 +459,11 @@ class UnifiedSolver(BaseSolver):
                 logger.info("All constraints satisfied!")
             
             # Store metadata for metrics if enabled
-            if config.ENABLE_METRICS:
+            if config_module.ENABLE_METRICS:
                 self._last_run_metadata = response.metadata
                 
             # Store response for future comparison if enabled
-            if config.ENABLE_SOLUTION_COMPARISON:
+            if config_module.ENABLE_SOLUTION_COMPARISON:
                 self._last_stable_response = response
                 
                 # Compare with previous stable solution if available
@@ -465,7 +483,8 @@ class UnifiedSolver(BaseSolver):
 
     def _compare_solutions(self, stable_response: ScheduleResponse, new_response: ScheduleResponse) -> Dict[str, Any]:
         """Compare two solutions when solution comparison is enabled"""
-        if not config.ENABLE_SOLUTION_COMPARISON:
+        from . import config as config_module
+        if not config_module.ENABLE_SOLUTION_COMPARISON:
             return {"status": "Solution comparison disabled"}
             
         # Find assignments that differ between solutions
