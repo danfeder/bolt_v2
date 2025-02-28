@@ -1,0 +1,1 @@
+"""Visualization module for schedule analysis dashboard."""

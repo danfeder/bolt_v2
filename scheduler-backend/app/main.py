@@ -13,6 +13,7 @@ from .scheduling.solvers.config import (
     ENABLE_CONSTRAINT_RELAXATION
 )
 from .scheduling.constraints.relaxation import RelaxationLevel
+from .visualization.routes import router as dashboard_router
 
 description = """
 Scheduler API with configurable solver settings.
@@ -37,6 +38,10 @@ app = FastAPI(
         {
             "name": "System",
             "description": "Health checks and system monitoring"
+        },
+        {
+            "name": "Dashboard",
+            "description": "Schedule analysis dashboard and visualization"
         }
     ]
 )
@@ -56,6 +61,9 @@ unified_solver = UnifiedSolver()
 # Create specialized solver instances for different endpoints
 stable_solver = UnifiedSolver(use_genetic=False)  # Stable uses only OR-Tools
 dev_solver = UnifiedSolver(use_genetic=True)      # Dev uses genetic algorithm
+
+# Include dashboard router
+app.include_router(dashboard_router)
 
 @app.exception_handler(ValidationError)
 async def validation_exception_handler(request: Request, exc: ValidationError):
@@ -515,7 +523,7 @@ async def create_relaxed_schedule(request: RelaxationRequest) -> ScheduleRespons
         raise HTTPException(
             status_code=500,
             detail={"message": f"Scheduling error: {str(e)}"}
-        })
+        )
 
 
 @app.post(

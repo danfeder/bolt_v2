@@ -1,6 +1,6 @@
 """Component configuration for solvers"""
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Dict
 import os
 
 from ..core import Constraint, Objective
