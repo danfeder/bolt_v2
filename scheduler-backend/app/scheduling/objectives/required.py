@@ -43,10 +43,20 @@ class RequiredPeriodsObjective(BaseObjective):
             period = var["period"]
             
             # Check if this is a required period
-            is_required = any(
-                rp.date == date_str and rp.period == period
-                for rp in class_obj.required_periods
-            )
+            # Handle different class models (direct required_periods or nested in weeklySchedule)
+            is_required = False
+            if hasattr(class_obj, "required_periods") and class_obj.required_periods:
+                is_required = any(
+                    rp.date == date_str and rp.period == period
+                    for rp in class_obj.required_periods
+                )
+            elif hasattr(class_obj, "weeklySchedule") and hasattr(class_obj.weeklySchedule, "requiredPeriods"):
+                # Get weekday from date (1-7 for Monday-Sunday)
+                weekday = var["date"].weekday() + 1
+                is_required = any(
+                    rp.dayOfWeek == weekday and rp.period == period
+                    for rp in class_obj.weeklySchedule.requiredPeriods
+                )
             
             if is_required:
                 # Large reward for required periods (highest priority)

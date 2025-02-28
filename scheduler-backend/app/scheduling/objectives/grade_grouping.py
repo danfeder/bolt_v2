@@ -96,8 +96,13 @@ class GradeGroupingObjective(BaseObjective):
                 context.model.AddBoolOr([cur_active.Not(), next_active.Not()]).OnlyEnforceIf(both_active.Not())
                 
                 # Get class objects for both variables
-                cur_class = next((c for c in context.request.classes if c.id == cur_var["class_id"]), None)
-                next_class = next((c for c in context.request.classes if c.id == next_var["class_id"]), None)
+                # Handle different field names (id vs name vs classId)
+                cur_class = next((c for c in context.request.classes if 
+                                  (hasattr(c, "id") and c.id == cur_var["name"]) or 
+                                  (hasattr(c, "name") and c.name == cur_var["name"])), None)
+                next_class = next((c for c in context.request.classes if 
+                                  (hasattr(c, "id") and c.id == next_var["name"]) or 
+                                  (hasattr(c, "name") and c.name == next_var["name"])), None)
                 
                 if cur_class and next_class:
                     # Calculate similarity score between the grades using gradeGroup

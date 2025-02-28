@@ -10,10 +10,10 @@ import logging
 from ....models import ScheduleRequest, WeightConfig, ScheduleAssignment
 from ...core import SolverConfig
 from ..config import WEIGHTS
-from ..solver import UnifiedSolver
+# Import UnifiedSolver is moved to method level to avoid circular imports
 from .optimizer import GeneticOptimizer
 from .fitness import FitnessCalculator
-from .population import Population
+from .population import PopulationManager as Population  # Alias for backward compatibility
 from .chromosome import ScheduleChromosome
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,9 @@ class MetaObjectiveCalculator:
         start_time = time.time()
         weight_config = weight_chromosome.to_weight_config()
         
+        # Import at method level to avoid circular imports
+        from ..solver import UnifiedSolver
+        
         # Create solver with this weight configuration
         solver = UnifiedSolver(
             request=self.request,
@@ -93,7 +96,7 @@ class MetaObjectiveCalculator:
             logger.error(f"Error evaluating weight config: {e}")
             return -10000.0, None
         
-    def _calculate_meta_score(self, assignments: List[ScheduleAssignment], solver: UnifiedSolver) -> float:
+    def _calculate_meta_score(self, assignments: List[ScheduleAssignment], solver) -> float:
         """
         Calculate meta-score for a schedule based on multiple quality metrics.
         
