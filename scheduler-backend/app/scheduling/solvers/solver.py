@@ -1,5 +1,5 @@
 """Unified solver implementation with configurable features"""
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union, Type
 import traceback
 from dateutil import parser
 import logging
@@ -18,6 +18,12 @@ from .base import BaseSolver
 from ...models import ScheduleRequest, ScheduleResponse, WeightConfig
 from .genetic.optimizer import GeneticOptimizer
 from .genetic.meta_optimizer import MetaOptimizer
+from ..constraints.relaxation import (
+    RelaxationController, 
+    RelaxationLevel, 
+    RelaxableConstraint,
+    RelaxationResult
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +37,8 @@ class UnifiedSolver(BaseSolver):
                 config: Optional[SolverConfig] = None,
                 use_or_tools: bool = True,
                 use_genetic: bool = True,
-                custom_weights: Optional[Dict[str, int]] = None):
+                custom_weights: Optional[Dict[str, int]] = None,
+                enable_relaxation: Optional[bool] = None):
         """
         Initialize the unified solver.
         
@@ -41,6 +48,7 @@ class UnifiedSolver(BaseSolver):
             use_or_tools: Whether to use OR-Tools CP-SAT solver
             use_genetic: Whether to use genetic algorithm
             custom_weights: Optional custom weights to override defaults
+            enable_relaxation: Whether to enable constraint relaxation
         """
         super().__init__("cp-sat-unified")
         self.request = request
@@ -61,6 +69,15 @@ class UnifiedSolver(BaseSolver):
         self._last_stable_response: Optional[ScheduleResponse] = None
         self._constraint_manager = ConstraintManager()
         self.constraint_violations = []
+        
+        # Relaxation control
+        self.enable_relaxation = (
+            enable_relaxation if enable_relaxation is not None 
+            else config.ENABLE_CONSTRAINT_RELAXATION
+        )
+        self.relaxation_controller = RelaxationController() if self.enable_relaxation else None
+        self.current_relaxation_level = RelaxationLevel.NONE
+        self.relaxation_results: List[RelaxationResult] = []
         
         # Override weights if provided
         self.custom_weights = custom_weights
@@ -89,8 +106,13 @@ class UnifiedSolver(BaseSolver):
         self.meta_optimizer = None
         
         # Add base constraints through constraint manager
-        for constraint in get_base_constraints():
+        base_constraints = get_base_constraints()
+        for constraint in base_constraints:
             self._constraint_manager.add_constraint(constraint)
+            
+            # Register relaxable constraints with the controller
+            if self.enable_relaxation and isinstance(constraint, RelaxableConstraint):
+                self.relaxation_controller.register_constraint(constraint)
             
         # Add base objectives
         for objective in get_base_objectives():
@@ -187,9 +209,66 @@ class UnifiedSolver(BaseSolver):
         
         return best_config
     
+    def relax_constraints(
+        self, 
+        level: Union[RelaxationLevel, str, int],
+        context: Optional[SchedulerContext] = None
+    ) -> List[RelaxationResult]:
+        """
+        Relax constraints to the specified level.
+        
+        Args:
+            level: Relaxation level to apply (can be RelaxationLevel enum, 
+                  string name, or int value 0-4)
+            context: Optional scheduler context for reference
+            
+        Returns:
+            List of relaxation results
+        """
+        if not self.enable_relaxation or not self.relaxation_controller:
+            logger.warning("Constraint relaxation is disabled")
+            return []
+            
+        # Convert level to RelaxationLevel enum if needed
+        if isinstance(level, str):
+            try:
+                level = RelaxationLevel[level.upper()]
+            except KeyError:
+                raise ValueError(f"Invalid relaxation level name: {level}")
+        elif isinstance(level, int):
+            try:
+                level = RelaxationLevel(level)
+            except ValueError:
+                raise ValueError(f"Invalid relaxation level value: {level}")
+                
+        # Store current level
+        self.current_relaxation_level = level
+        
+        # Apply relaxation
+        results = self.relaxation_controller.relax_constraints(level, context)
+        self.relaxation_results.extend(results)
+        
+        # Log results
+        logger.info(f"Applied constraint relaxation level {level.name}")
+        logger.info(f"Relaxed {len(results)} constraints")
+        
+        return results
+        
+    def get_relaxation_status(self) -> Dict[str, Any]:
+        """Get current relaxation status."""
+        if not self.enable_relaxation or not self.relaxation_controller:
+            return {"status": "disabled"}
+            
+        return {
+            "current_level": self.current_relaxation_level.name,
+            "relaxation_enabled": self.enable_relaxation,
+            "details": self.relaxation_controller.get_relaxation_status()
+        }
+    
     def solve(self, request: ScheduleRequest = None, 
               time_limit_seconds: int = None, 
-              tune_weights: bool = False) -> ScheduleResponse:
+              tune_weights: bool = False,
+              with_relaxation: bool = False) -> ScheduleResponse:
         """
         Solve the scheduling problem.
         
@@ -197,6 +276,8 @@ class UnifiedSolver(BaseSolver):
             request: Schedule request to solve (uses self.request if None)
             time_limit_seconds: Time limit for solver
             tune_weights: Whether to tune weights before solving
+            with_relaxation: Whether to attempt constraint relaxation if
+                            a solution is not found
             
         Returns:
             Schedule response with assignments
@@ -217,7 +298,44 @@ class UnifiedSolver(BaseSolver):
             self.tune_weights(req)
             
         # Create schedule
-        return self.create_schedule(req, time_limit)
+        response = self.create_schedule(req, time_limit)
+        
+        # If no solution found and relaxation is enabled, try with relaxation
+        if with_relaxation and self.enable_relaxation and (
+            not response.assignments or len(response.assignments) == 0
+        ):
+            logger.info("No solution found, attempting with constraint relaxation")
+            
+            # Try with progressively increasing relaxation levels
+            for level in [
+                RelaxationLevel.MINIMAL,
+                RelaxationLevel.MODERATE,
+                RelaxationLevel.SIGNIFICANT,
+                RelaxationLevel.MAXIMUM
+            ]:
+                logger.info(f"Trying relaxation level: {level.name}")
+                self.relax_constraints(level)
+                
+                # Try to create schedule with relaxed constraints
+                response = self.create_schedule(req, time_limit)
+                
+                # If we found a solution, include relaxation info and return
+                if response.assignments and len(response.assignments) > 0:
+                    # Add relaxation info to metadata
+                    if hasattr(response, 'metadata') and response.metadata:
+                        response.metadata.relaxation_level = level.name
+                        response.metadata.relaxation_status = self.get_relaxation_status()
+                    
+                    logger.info(
+                        f"Found solution with relaxation level {level.name}, "
+                        f"assignments: {len(response.assignments)}"
+                    )
+                    return response
+            
+            # If still no solution, log and return the empty response
+            logger.warning("Could not find solution even with maximum relaxation")
+        
+        return response
     
     def create_schedule(self, request: ScheduleRequest, time_limit_seconds: int = None) -> ScheduleResponse:
         """Create a schedule using the unified solver configuration"""
@@ -232,6 +350,7 @@ class UnifiedSolver(BaseSolver):
         logger.info(f"- Teacher breaks enabled: {config.ENABLE_TEACHER_BREAKS}")
         logger.info(f"- Weight tuning enabled: {config.ENABLE_WEIGHT_TUNING}")
         logger.info(f"- Grade grouping enabled: {config.ENABLE_GRADE_GROUPING}")
+        logger.info(f"- Constraint relaxation enabled: {self.enable_relaxation}")
         
         if config.ENABLE_GENETIC_OPTIMIZATION and self.use_genetic:
             logger.info("\nGenetic algorithm configuration:")

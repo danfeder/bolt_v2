@@ -78,6 +78,7 @@ ENABLE_CONSECUTIVE_CLASSES = bool(int(os.getenv('ENABLE_CONSECUTIVE_CLASSES', '1
 ENABLE_TEACHER_BREAKS = bool(int(os.getenv('ENABLE_TEACHER_BREAKS', '0')))
 ENABLE_WEIGHT_TUNING = bool(int(os.getenv('ENABLE_WEIGHT_TUNING', '0')))
 ENABLE_GRADE_GROUPING = bool(int(os.getenv('ENABLE_GRADE_GROUPING', '1')))
+ENABLE_CONSTRAINT_RELAXATION = bool(int(os.getenv('ENABLE_CONSTRAINT_RELAXATION', '1')))
 
 # Load configurations
 GENETIC_CONFIG = GeneticConfig.from_env()
@@ -132,6 +133,15 @@ from ..constraints.teacher_workload import (
     ConsecutiveClassesConstraint,
     TeacherBreakConstraint
 )
+from ..constraints.relaxable_limits import (
+    RelaxableDailyLimitConstraint,
+    RelaxableWeeklyLimitConstraint
+)
+from ..constraints.relaxation import (
+    RelaxationController,
+    RelaxationLevel,
+    RelaxableConstraint
+)
 
 # Objectives
 from ..objectives.required import RequiredPeriodsObjective
@@ -144,15 +154,33 @@ from ..objectives.grade_grouping import GradeGroupingObjective
 def get_base_constraints() -> List[Constraint]:
     """Get the common constraints used by all solvers"""
     constraints = [
-        SingleAssignmentConstraint(),
-        NoOverlapConstraint(),
-        InstructorAvailabilityConstraint(),
-        RequiredPeriodsConstraint(),
-        ConflictPeriodsConstraint(),
-        DailyLimitConstraint(),
-        WeeklyLimitConstraint(),
-        MinimumPeriodsConstraint(),
+        SingleAssignmentConstraint(never_relax=True),  # Critical constraints that shouldn't be relaxed
+        NoOverlapConstraint(never_relax=True),
+        InstructorAvailabilityConstraint(never_relax=True),
+        RequiredPeriodsConstraint(never_relax=True),
+        ConflictPeriodsConstraint(relaxation_priority=4),  # Relaxable but last resort
     ]
+    
+    # Use relaxable constraints if enabled, otherwise use standard constraints
+    if ENABLE_CONSTRAINT_RELAXATION:
+        constraints.extend([
+            RelaxableDailyLimitConstraint(
+                enabled=True,
+                relaxation_priority=2  # Medium priority for relaxation
+            ),
+            RelaxableWeeklyLimitConstraint(
+                enabled=True,
+                relaxation_priority=3  # Lower priority for relaxation (relax daily limits first)
+            ),
+        ])
+    else:
+        # Standard constraints
+        constraints.extend([
+            DailyLimitConstraint(),
+            WeeklyLimitConstraint(),
+        ])
+    
+    constraints.append(MinimumPeriodsConstraint())
     
     # Add teacher workload constraints if enabled
     if ENABLE_CONSECUTIVE_CLASSES:

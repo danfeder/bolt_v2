@@ -4,6 +4,16 @@ from .assignment import SingleAssignmentConstraint, NoOverlapConstraint
 from .instructor import InstructorAvailabilityConstraint
 from .periods import RequiredPeriodsConstraint, ConflictPeriodsConstraint
 from .teacher_workload import ConsecutiveClassesConstraint, TeacherBreakConstraint
+from .relaxation import (
+    RelaxableConstraint, 
+    RelaxationLevel, 
+    RelaxationResult, 
+    RelaxationController
+)
+from .relaxable_limits import (
+    RelaxableDailyLimitConstraint,
+    RelaxableWeeklyLimitConstraint
+)
 
 __all__ = [
     'BaseConstraint',
@@ -15,5 +25,11 @@ __all__ = [
     'RequiredPeriodsConstraint',
     'ConflictPeriodsConstraint',
     'ConsecutiveClassesConstraint',
-    'TeacherBreakConstraint'
+    'TeacherBreakConstraint',
+    'RelaxableConstraint',
+    'RelaxationLevel',
+    'RelaxationResult',
+    'RelaxationController',
+    'RelaxableDailyLimitConstraint',
+    'RelaxableWeeklyLimitConstraint'
 ]

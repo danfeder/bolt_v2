@@ -1,13 +1,18 @@
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError, BaseModel
+from pydantic import ValidationError, BaseModel, Field
 from typing import Dict, Any, List, Optional
 
 from .models import ScheduleRequest, ScheduleResponse, WeightConfig
 from .scheduling.solvers.solver import UnifiedSolver
 from .scheduling.core import SolverConfig
-from .scheduling.solvers.config import ENABLE_WEIGHT_TUNING, META_CONFIG
+from .scheduling.solvers.config import (
+    ENABLE_WEIGHT_TUNING, 
+    META_CONFIG, 
+    ENABLE_CONSTRAINT_RELAXATION
+)
+from .scheduling.constraints.relaxation import RelaxationLevel
 
 description = """
 Scheduler API with configurable solver settings.
@@ -203,6 +208,29 @@ async def get_dev_metrics() -> Dict[str, Any]:
             status_code=500,
             detail={"message": f"Error fetching metrics: {str(e)}"}
         )
+        
+@app.get(
+    "/metrics/relaxation",
+    tags=["System"],
+    summary="Constraint relaxation metrics",
+    description="Get metrics about constraint relaxation status and history"
+)
+async def get_relaxation_metrics() -> Dict[str, Any]:
+    if not ENABLE_CONSTRAINT_RELAXATION:
+        return {
+            "status": "disabled",
+            "message": "Constraint relaxation is disabled. Enable with ENABLE_CONSTRAINT_RELAXATION=1"
+        }
+        
+    try:
+        # Create a new solver to get relaxation info
+        relaxation_solver = UnifiedSolver(enable_relaxation=True)
+        return relaxation_solver.get_relaxation_status()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Error fetching relaxation metrics: {str(e)}"}
+        )
 
 @app.get(
     "/health",
@@ -382,6 +410,154 @@ async def create_optimized_schedule(request: ScheduleRequest) -> ScheduleRespons
         from app.utils.date_utils import to_utc_isoformat
         for assignment in response.assignments:
             assignment.date = to_utc_isoformat(datetime.fromisoformat(assignment.date))
+            
+        # Validate response before returning
+        return ScheduleResponse(
+            assignments=response.assignments,
+            metadata=response.metadata
+        )
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Invalid schedule request or response",
+                "errors": [{"msg": err["msg"], "loc": err["loc"]} for err in e.errors()]
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Scheduling error: {str(e)}"}
+        )
+
+
+class RelaxationRequest(BaseModel):
+    """Request for constraint relaxation."""
+    schedule_request: ScheduleRequest
+    relaxation_level: str = Field("MINIMAL", description="Relaxation level (NONE, MINIMAL, MODERATE, SIGNIFICANT, MAXIMUM)")
+
+
+@app.post(
+    "/schedule/relaxed",
+    response_model=ScheduleResponse,
+    tags=["Schedule Generation"],
+    summary="Generate schedule with constraint relaxation",
+    description="""
+    Create a schedule with constraint relaxation. This endpoint:
+    1. Tries to find a solution with the given relaxation level
+    2. Returns the schedule if found, or empty if no solution
+    
+    Relaxation levels:
+    - NONE: No relaxation, standard constraints
+    - MINIMAL: Slight relaxation of less critical constraints
+    - MODERATE: Moderate relaxation of constraints
+    - SIGNIFICANT: Significant relaxation for difficult schedules
+    - MAXIMUM: Maximum relaxation for extremely difficult cases
+    """
+)
+async def create_relaxed_schedule(request: RelaxationRequest) -> ScheduleResponse:
+    if not ENABLE_CONSTRAINT_RELAXATION:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Constraint relaxation is disabled. Enable with ENABLE_CONSTRAINT_RELAXATION=1"}
+        )
+        
+    try:
+        # Validate relaxation level
+        try:
+            level = RelaxationLevel[request.relaxation_level.upper()]
+        except KeyError:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": f"Invalid relaxation level: {request.relaxation_level}. "
+                                 f"Valid levels: {[l.name for l in RelaxationLevel]}"}
+            )
+                
+        # Create solver with relaxation enabled
+        relaxed_solver = UnifiedSolver(
+            request=request.schedule_request,
+            use_genetic=True,
+            use_or_tools=True,
+            enable_relaxation=True
+        )
+        
+        # Apply relaxation before solving
+        relaxed_solver.relax_constraints(level)
+        
+        # Solve with the relaxed constraints
+        response = relaxed_solver.solve()
+        
+        # Convert assignment date strings to UTC ISO 8601 format
+        from datetime import datetime
+        from app.utils.date_utils import to_utc_isoformat
+        for assignment in response.assignments:
+            assignment.date = to_utc_isoformat(datetime.fromisoformat(assignment.date))
+            
+        # Add relaxation info to metadata
+        if hasattr(response, 'metadata') and response.metadata:
+            response.metadata.relaxation_level = level.name
+            response.metadata.relaxation_status = relaxed_solver.get_relaxation_status()
+            
+        # Validate response before returning
+        return ScheduleResponse(
+            assignments=response.assignments,
+            metadata=response.metadata
+        )
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Invalid schedule request or response",
+                "errors": [{"msg": err["msg"], "loc": err["loc"]} for err in e.errors()]
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Scheduling error: {str(e)}"}
+        })
+
+
+@app.post(
+    "/schedule/adaptive",
+    response_model=ScheduleResponse,
+    tags=["Schedule Generation"],
+    summary="Generate schedule with adaptive constraint relaxation",
+    description="""
+    Create a schedule with adaptive constraint relaxation. This endpoint:
+    1. Tries to find a solution with standard constraints first
+    2. If no solution is found, progressively relaxes constraints until a solution is found
+    3. Returns the solution with the minimum necessary relaxation
+    """
+)
+async def create_adaptive_schedule(request: ScheduleRequest) -> ScheduleResponse:
+    if not ENABLE_CONSTRAINT_RELAXATION:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Constraint relaxation is disabled. Enable with ENABLE_CONSTRAINT_RELAXATION=1"}
+        )
+        
+    try:
+        # Create solver with relaxation and progressive relaxation enabled
+        adaptive_solver = UnifiedSolver(
+            request=request,
+            use_genetic=True,
+            use_or_tools=True,
+            enable_relaxation=True
+        )
+        
+        # Solve with progressive relaxation
+        response = adaptive_solver.solve(with_relaxation=True)
+        
+        # Convert assignment date strings to UTC ISO 8601 format
+        from datetime import datetime
+        from app.utils.date_utils import to_utc_isoformat
+        for assignment in response.assignments:
+            assignment.date = to_utc_isoformat(datetime.fromisoformat(assignment.date))
+        
+        # Add relaxation status to metadata if available
+        if hasattr(response, 'metadata') and response.metadata:
+            response.metadata.relaxation_status = adaptive_solver.get_relaxation_status()
             
         # Validate response before returning
         return ScheduleResponse(
