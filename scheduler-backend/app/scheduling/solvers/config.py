@@ -47,16 +47,40 @@ class GeneticConfig:
             CROSSOVER_METHODS=crossover_methods
         )
 
+@dataclass
+class MetaOptimizationConfig:
+    """Configuration for meta-optimization weight tuning"""
+    POPULATION_SIZE: int = 20
+    GENERATIONS: int = 10
+    MUTATION_RATE: float = 0.2
+    CROSSOVER_RATE: float = 0.7
+    EVAL_TIME_LIMIT: int = 60  # Seconds for each inner optimization run
+    PARALLEL_EVALUATION: bool = True
+    
+    @classmethod
+    def from_env(cls) -> 'MetaOptimizationConfig':
+        """Create config from environment variables"""
+        return cls(
+            POPULATION_SIZE=int(os.getenv('META_POPULATION_SIZE', '20')),
+            GENERATIONS=int(os.getenv('META_GENERATIONS', '10')),
+            MUTATION_RATE=float(os.getenv('META_MUTATION_RATE', '0.2')),
+            CROSSOVER_RATE=float(os.getenv('META_CROSSOVER_RATE', '0.7')),
+            EVAL_TIME_LIMIT=int(os.getenv('META_EVAL_TIME_LIMIT', '60')),
+            PARALLEL_EVALUATION=bool(int(os.getenv('META_PARALLEL_EVALUATION', '1')))
+        )
+
 # Feature flags
 ENABLE_METRICS = bool(int(os.getenv('ENABLE_METRICS', '1')))
 ENABLE_SOLUTION_COMPARISON = bool(int(os.getenv('ENABLE_SOLUTION_COMPARISON', '1')))
 ENABLE_EXPERIMENTAL_DISTRIBUTION = bool(int(os.getenv('ENABLE_EXPERIMENTAL_DISTRIBUTION', '0')))
-ENABLE_GENETIC_OPTIMIZATION = bool(int(os.getenv('ENABLE_GENETIC_OPTIMIZATION', '0')))
+ENABLE_GENETIC_OPTIMIZATION = bool(int(os.getenv('ENABLE_GENETIC_OPTIMIZATION', '1')))
 ENABLE_CONSECUTIVE_CLASSES = bool(int(os.getenv('ENABLE_CONSECUTIVE_CLASSES', '1')))
 ENABLE_TEACHER_BREAKS = bool(int(os.getenv('ENABLE_TEACHER_BREAKS', '0')))
+ENABLE_WEIGHT_TUNING = bool(int(os.getenv('ENABLE_WEIGHT_TUNING', '0')))
 
-# Load genetic algorithm config
+# Load configurations
 GENETIC_CONFIG = GeneticConfig.from_env()
+META_CONFIG = MetaOptimizationConfig.from_env()
 
 # Time limits
 SOLVER_TIME_LIMIT_SECONDS = int(os.getenv('SOLVER_TIME_LIMIT', '300'))
@@ -68,7 +92,30 @@ WEIGHTS = {
     'final_week_compression': 3000,
     'daily_balance': 1500,
     'distribution': 1000,
+    'avoid_periods': -500,
+    'earlier_dates': 10,
 }
+
+# Default weights for resetting
+DEFAULT_WEIGHTS = WEIGHTS.copy()
+
+def update_weights(new_weights: Dict[str, int]) -> None:
+    """Update objective weights with new values"""
+    global WEIGHTS
+    
+    # Validate weight names
+    for key in new_weights:
+        if key not in WEIGHTS:
+            raise ValueError(f"Unknown weight key: {key}")
+            
+    # Update only provided weights
+    for key, value in new_weights.items():
+        WEIGHTS[key] = value
+        
+def reset_weights() -> None:
+    """Reset weights to default values"""
+    global WEIGHTS
+    WEIGHTS = DEFAULT_WEIGHTS.copy()
 
 # Constraints
 from ..constraints.assignment import SingleAssignmentConstraint, NoOverlapConstraint

@@ -1,12 +1,13 @@
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
-from typing import Dict, Any
+from pydantic import ValidationError, BaseModel
+from typing import Dict, Any, List, Optional
 
 from .models import ScheduleRequest, ScheduleResponse, WeightConfig
-from .scheduling.solvers.stable import StableSolver
-from .scheduling.solvers.dev import DevSolver
+from .scheduling.solvers.solver import UnifiedSolver
+from .scheduling.core import SolverConfig
+from .scheduling.solvers.config import ENABLE_WEIGHT_TUNING, META_CONFIG
 
 description = """
 Scheduler API with configurable solver settings.
@@ -45,8 +46,11 @@ app.add_middleware(
 )
 
 # Initialize solvers
-stable_solver = StableSolver()
-dev_solver = DevSolver()
+unified_solver = UnifiedSolver()
+
+# Create specialized solver instances for different endpoints
+stable_solver = UnifiedSolver(use_genetic=False)  # Stable uses only OR-Tools
+dev_solver = UnifiedSolver(use_genetic=True)      # Dev uses genetic algorithm
 
 @app.exception_handler(ValidationError)
 async def validation_exception_handler(request: Request, exc: ValidationError):
@@ -83,7 +87,7 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
 )
 async def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
     try:
-        response = stable_solver.create_schedule(request)
+        response = stable_solver.solve(request)
         # Convert assignment date strings to UTC ISO 8601 format
         from datetime import datetime
         from app.utils.date_utils import to_utc_isoformat
@@ -117,7 +121,7 @@ async def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
 )
 async def create_schedule_dev(request: ScheduleRequest) -> ScheduleResponse:
     try:
-        response = dev_solver.create_schedule(request)
+        response = dev_solver.solve(request)
         # Convert assignment date strings to UTC ISO 8601 format
         from datetime import datetime
         from app.utils.date_utils import to_utc_isoformat
@@ -152,8 +156,8 @@ async def create_schedule_dev(request: ScheduleRequest) -> ScheduleResponse:
 async def compare_solvers(request: ScheduleRequest) -> Dict[str, Any]:
     try:
         # Validate and create schedules
-        stable_response = stable_solver.create_schedule(request)
-        dev_response = dev_solver.create_schedule(request)
+        stable_response = stable_solver.solve(request)
+        dev_response = dev_solver.solve(request)
         from datetime import datetime
         from app.utils.date_utils import to_utc_isoformat
         for assignment in stable_response.assignments:
@@ -161,7 +165,7 @@ async def compare_solvers(request: ScheduleRequest) -> Dict[str, Any]:
         for assignment in dev_response.assignments:
             assignment.date = to_utc_isoformat(datetime.fromisoformat(assignment.date))
         
-        comparison = dev_solver.compare_with_stable(
+        comparison = dev_solver._compare_solutions(
             stable_response,
             dev_response
         )
@@ -193,7 +197,7 @@ async def compare_solvers(request: ScheduleRequest) -> Dict[str, Any]:
 )
 async def get_dev_metrics() -> Dict[str, Any]:
     try:
-        return dev_solver.get_last_run_metrics()
+        return dev_solver.get_metrics()
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -264,4 +268,136 @@ async def reset_solver_config() -> Dict[str, Any]:
         raise HTTPException(
             status_code=500,
             detail={"message": f"Failed to reset configuration: {str(e)}"}
+        )
+
+
+class WeightTuningRequest(BaseModel):
+    """Request for weight tuning"""
+    schedule_request: ScheduleRequest
+    population_size: Optional[int] = None
+    generations: Optional[int] = None
+    time_limit: Optional[int] = None
+    parallel: Optional[bool] = None
+
+
+@app.post(
+    "/solver/tune-weights",
+    response_model=Dict[str, Any],
+    tags=["Solver Configuration"],
+    summary="Tune weights automatically",
+    description="""
+    Use meta-optimization to automatically discover optimal weights.
+    Runs multiple schedule optimizations to find the best weight configuration.
+    """
+)
+async def tune_weights(request: WeightTuningRequest) -> Dict[str, Any]:
+    if not ENABLE_WEIGHT_TUNING:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Weight tuning is disabled. Enable with ENABLE_WEIGHT_TUNING=1"}
+        )
+        
+    try:
+        # Create a specialized solver for weight tuning
+        tuning_solver = UnifiedSolver(
+            request=request.schedule_request,
+            use_genetic=True,  # Need genetic algorithm for weight tuning
+            use_or_tools=False  # Don't need OR-Tools for tuning
+        )
+        
+        # Override meta-optimization parameters if provided
+        if request.population_size is not None:
+            META_CONFIG.POPULATION_SIZE = request.population_size
+        if request.generations is not None:
+            META_CONFIG.GENERATIONS = request.generations
+        if request.time_limit is not None:
+            META_CONFIG.EVAL_TIME_LIMIT = request.time_limit
+        if request.parallel is not None:
+            META_CONFIG.PARALLEL_EVALUATION = request.parallel
+            
+        # Run weight tuning
+        best_config = tuning_solver.tune_weights()
+        
+        # Update global weights with discovered values
+        from .scheduling.solvers.config import update_weights, WEIGHTS
+        update_weights(best_config.weights_dict)
+        
+        return {
+            "status": "success",
+            "message": "Weight tuning completed successfully",
+            "tuned_weights": best_config.dict(),
+            "meta_config": {
+                "population_size": META_CONFIG.POPULATION_SIZE,
+                "generations": META_CONFIG.GENERATIONS,
+                "eval_time_limit": META_CONFIG.EVAL_TIME_LIMIT,
+                "parallel_evaluation": META_CONFIG.PARALLEL_EVALUATION
+            }
+        }
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Invalid weight tuning request",
+                "errors": [{"msg": err["msg"], "loc": err["loc"]} for err in e.errors()]
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Failed to tune weights: {str(e)}"}
+        )
+
+
+@app.post(
+    "/schedule/optimized",
+    response_model=ScheduleResponse,
+    tags=["Schedule Generation"],
+    summary="Generate optimized schedule",
+    description="""
+    Create a schedule with automatic weight tuning. This endpoint:
+    1. Runs meta-optimization to discover optimal weights
+    2. Uses the optimized weights to generate the final schedule
+    """
+)
+async def create_optimized_schedule(request: ScheduleRequest) -> ScheduleResponse:
+    if not ENABLE_WEIGHT_TUNING:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "Weight tuning is disabled. Enable with ENABLE_WEIGHT_TUNING=1"}
+        )
+        
+    try:
+        # Create a specialized solver for optimized scheduling
+        optimized_solver = UnifiedSolver(
+            request=request,
+            use_genetic=True,
+            use_or_tools=False
+        )
+        
+        # Run the solver with weight tuning enabled
+        response = optimized_solver.solve(tune_weights=True)
+        
+        # Convert assignment date strings to UTC ISO 8601 format
+        from datetime import datetime
+        from app.utils.date_utils import to_utc_isoformat
+        for assignment in response.assignments:
+            assignment.date = to_utc_isoformat(datetime.fromisoformat(assignment.date))
+            
+        # Validate response before returning
+        return ScheduleResponse(
+            assignments=response.assignments,
+            metadata=response.metadata
+        )
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Invalid schedule request or response",
+                "errors": [{"msg": err["msg"], "loc": err["loc"]} for err in e.errors()]
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Scheduling error: {str(e)}"}
         )

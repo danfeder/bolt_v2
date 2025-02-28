@@ -2,18 +2,24 @@
 from typing import Dict, Any, List, Optional
 import traceback
 from dateutil import parser
+import logging
 
-from ..core import SchedulerContext, ConstraintManager
+from ..core import SchedulerContext, ConstraintManager, SolverConfig
 from . import config
 from .config import (
     get_base_constraints,
     get_base_objectives,
-    GENETIC_CONFIG
+    GENETIC_CONFIG,
+    META_CONFIG,
+    WEIGHTS
 )
 from ..objectives.distribution import DistributionObjective
 from .base import BaseSolver
-from ...models import ScheduleRequest, ScheduleResponse
+from ...models import ScheduleRequest, ScheduleResponse, WeightConfig
 from .genetic.optimizer import GeneticOptimizer
+from .genetic.meta_optimizer import MetaOptimizer
+
+logger = logging.getLogger(__name__)
 
 class UnifiedSolver(BaseSolver):
     """
@@ -21,18 +27,46 @@ class UnifiedSolver(BaseSolver):
     Features can be enabled/disabled through configuration.
     """
     
-    def __init__(self):
+    def __init__(self, request: Optional[ScheduleRequest] = None, 
+                config: Optional[SolverConfig] = None,
+                use_or_tools: bool = True,
+                use_genetic: bool = True,
+                custom_weights: Optional[Dict[str, int]] = None):
+        """
+        Initialize the unified solver.
+        
+        Args:
+            request: Optional schedule request for initialization
+            config: Optional solver configuration
+            use_or_tools: Whether to use OR-Tools CP-SAT solver
+            use_genetic: Whether to use genetic algorithm
+            custom_weights: Optional custom weights to override defaults
+        """
         super().__init__("cp-sat-unified")
-        # Initialize or-tools solver
-        from ortools.sat.python import cp_model
-        self.model = cp_model.CpModel()
-        self.solver = cp_model.CpSolver()
+        self.request = request
+        self.use_or_tools = use_or_tools
+        self.use_genetic = use_genetic
+        self.base_config = config
+        
+        # Initialize or-tools solver if needed
+        if use_or_tools:
+            from ortools.sat.python import cp_model
+            self.model = cp_model.CpModel()
+            self.solver = cp_model.CpSolver()
+        else:
+            self.model = None
+            self.solver = None
+            
         self._last_run_metadata = None
         self._last_stable_response: Optional[ScheduleResponse] = None
         self._constraint_manager = ConstraintManager()
+        self.constraint_violations = []
+        
+        # Override weights if provided
+        self.custom_weights = custom_weights
         
         # Initialize genetic optimizer if enabled
-        self._genetic_optimizer = (
+        self.genetic_optimizer = (
             GeneticOptimizer(
                 population_size=GENETIC_CONFIG.POPULATION_SIZE,
                 elite_size=GENETIC_CONFIG.ELITE_SIZE,
@@ -47,9 +81,12 @@ class UnifiedSolver(BaseSolver):
                 parallel_fitness=GENETIC_CONFIG.PARALLEL_FITNESS,
                 max_workers=None  # Auto-detect
             )
-            if config.ENABLE_GENETIC_OPTIMIZATION
+            if config.ENABLE_GENETIC_OPTIMIZATION and use_genetic
             else None
         )
+        
+        # Initialize meta-optimizer if enabled
+        self.meta_optimizer = None
         
         # Add base constraints through constraint manager
         for constraint in get_base_constraints():
@@ -85,35 +122,138 @@ class UnifiedSolver(BaseSolver):
             }
         }
 
-    def create_schedule(self, request: ScheduleRequest) -> ScheduleResponse:
+    def get_weights(self) -> Dict[str, int]:
+        """
+        Get the current weights.
+        
+        Returns:
+            Dict of objective name to weight value
+        """
+        if self.custom_weights:
+            return self.custom_weights
+        else:
+            return WEIGHTS
+            
+    def tune_weights(self, request: ScheduleRequest = None) -> WeightConfig:
+        """
+        Tune weights using the meta-optimizer.
+        
+        Args:
+            request: Schedule request to tune weights for (uses self.request if None)
+            
+        Returns:
+            Optimized weight configuration
+        """
+        if not config.ENABLE_WEIGHT_TUNING:
+            logger.warning("Weight tuning is disabled. Enable with ENABLE_WEIGHT_TUNING=1")
+            return WeightConfig(**WEIGHTS)
+            
+        if not self.use_genetic:
+            logger.warning("Weight tuning requires genetic algorithm. Enable with use_genetic=True")
+            return WeightConfig(**WEIGHTS)
+            
+        req = request if request is not None else self.request
+        if not req:
+            raise ValueError("Schedule request is required for weight tuning")
+            
+        logger.info("Starting weight tuning process...")
+        
+        # Create meta-optimizer if not already created
+        if not self.meta_optimizer:
+            self.meta_optimizer = MetaOptimizer(
+                request=req,
+                base_config=self.base_config,
+                population_size=META_CONFIG.POPULATION_SIZE,
+                generations=META_CONFIG.GENERATIONS,
+                mutation_rate=META_CONFIG.MUTATION_RATE,
+                crossover_rate=META_CONFIG.CROSSOVER_RATE,
+                eval_time_limit=META_CONFIG.EVAL_TIME_LIMIT
+            )
+            
+        # Run meta-optimization
+        best_config, best_fitness = self.meta_optimizer.optimize(
+            parallel=META_CONFIG.PARALLEL_EVALUATION
+        )
+        
+        logger.info(f"Weight tuning complete. Best fitness: {best_fitness}")
+        logger.info(f"Optimized weights: {best_config}")
+        
+        # Update custom weights
+        self.custom_weights = best_config.weights_dict
+        
+        return best_config
+    
+    def solve(self, request: ScheduleRequest = None, 
+              time_limit_seconds: int = None, 
+              tune_weights: bool = False) -> ScheduleResponse:
+        """
+        Solve the scheduling problem.
+        
+        Args:
+            request: Schedule request to solve (uses self.request if None)
+            time_limit_seconds: Time limit for solver
+            tune_weights: Whether to tune weights before solving
+            
+        Returns:
+            Schedule response with assignments
+        """
+        # Use provided request or stored request
+        req = request if request is not None else self.request
+        if not req:
+            raise ValueError("Schedule request is required")
+            
+        # Set time limit
+        time_limit = time_limit_seconds if time_limit_seconds is not None else config.SOLVER_TIME_LIMIT_SECONDS
+        
+        # Store request for future use
+        self.request = req
+        
+        # Tune weights if requested
+        if tune_weights and config.ENABLE_WEIGHT_TUNING:
+            self.tune_weights(req)
+            
+        # Create schedule
+        return self.create_schedule(req, time_limit)
+    
+    def create_schedule(self, request: ScheduleRequest, time_limit_seconds: int = None) -> ScheduleResponse:
         """Create a schedule using the unified solver configuration"""
-        print(f"\nStarting unified solver for {len(request.classes)} classes...")
-        print("\nSolver configuration:")
-        print("Feature flags:")
-        print(f"- Metrics enabled: {config.ENABLE_METRICS}")
-        print(f"- Solution comparison enabled: {config.ENABLE_SOLUTION_COMPARISON}")
-        print(f"- Experimental distribution enabled: {config.ENABLE_EXPERIMENTAL_DISTRIBUTION}")
-        print(f"- Genetic optimization enabled: {config.ENABLE_GENETIC_OPTIMIZATION}")
-        print(f"- Consecutive classes control enabled: {config.ENABLE_CONSECUTIVE_CLASSES}")
-        print(f"- Teacher breaks enabled: {config.ENABLE_TEACHER_BREAKS}")
-        if config.ENABLE_GENETIC_OPTIMIZATION:
-            print("\nGenetic algorithm configuration:")
-            print(f"- Population size: {config.GENETIC_CONFIG.POPULATION_SIZE}")
-            print(f"- Elite size: {config.GENETIC_CONFIG.ELITE_SIZE}")
-            print(f"- Max generations: {config.GENETIC_CONFIG.MAX_GENERATIONS}")
-            print(f"- Parallel fitness evaluation: {config.GENETIC_CONFIG.PARALLEL_FITNESS}")
-            print(f"- Adaptive control enabled: {config.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL}")
+        logger.info(f"Starting unified solver for {len(request.classes)} classes...")
+        logger.info("\nSolver configuration:")
+        logger.info("Feature flags:")
+        logger.info(f"- Metrics enabled: {config.ENABLE_METRICS}")
+        logger.info(f"- Solution comparison enabled: {config.ENABLE_SOLUTION_COMPARISON}")
+        logger.info(f"- Experimental distribution enabled: {config.ENABLE_EXPERIMENTAL_DISTRIBUTION}")
+        logger.info(f"- Genetic optimization enabled: {config.ENABLE_GENETIC_OPTIMIZATION}")
+        logger.info(f"- Consecutive classes control enabled: {config.ENABLE_CONSECUTIVE_CLASSES}")
+        logger.info(f"- Teacher breaks enabled: {config.ENABLE_TEACHER_BREAKS}")
+        logger.info(f"- Weight tuning enabled: {config.ENABLE_WEIGHT_TUNING}")
+        
+        if config.ENABLE_GENETIC_OPTIMIZATION and self.use_genetic:
+            logger.info("\nGenetic algorithm configuration:")
+            logger.info(f"- Population size: {config.GENETIC_CONFIG.POPULATION_SIZE}")
+            logger.info(f"- Elite size: {config.GENETIC_CONFIG.ELITE_SIZE}")
+            logger.info(f"- Max generations: {config.GENETIC_CONFIG.MAX_GENERATIONS}")
+            logger.info(f"- Parallel fitness evaluation: {config.GENETIC_CONFIG.PARALLEL_FITNESS}")
+            logger.info(f"- Adaptive control enabled: {config.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL}")
             if config.GENETIC_CONFIG.USE_ADAPTIVE_CONTROL:
-                print(f"- Adaptation interval: {config.GENETIC_CONFIG.ADAPTATION_INTERVAL} generations")
-                print(f"- Diversity threshold: {config.GENETIC_CONFIG.DIVERSITY_THRESHOLD}")
-                print(f"- Adaptation strength: {config.GENETIC_CONFIG.ADAPTATION_STRENGTH}")
-            print(f"- Available crossover methods: {', '.join(config.GENETIC_CONFIG.CROSSOVER_METHODS)}")
-        print("\nConstraints:")
+                logger.info(f"- Adaptation interval: {config.GENETIC_CONFIG.ADAPTATION_INTERVAL} generations")
+                logger.info(f"- Diversity threshold: {config.GENETIC_CONFIG.DIVERSITY_THRESHOLD}")
+                logger.info(f"- Adaptation strength: {config.GENETIC_CONFIG.ADAPTATION_STRENGTH}")
+            logger.info(f"- Available crossover methods: {', '.join(config.GENETIC_CONFIG.CROSSOVER_METHODS)}")
+        
+        if config.ENABLE_WEIGHT_TUNING:
+            logger.info("\nWeight tuning configuration:")
+            logger.info(f"- Meta population size: {config.META_CONFIG.POPULATION_SIZE}")
+            logger.info(f"- Meta generations: {config.META_CONFIG.GENERATIONS}")
+            logger.info(f"- Evaluation time limit: {config.META_CONFIG.EVAL_TIME_LIMIT} seconds")
+            logger.info(f"- Parallel evaluation: {config.META_CONFIG.PARALLEL_EVALUATION}")
+            
+        logger.info("\nConstraints:")
         for constraint in self.constraints:
-            print(f"- {constraint.name}")
-        print("\nObjectives:")
+            logger.info(f"- {constraint.name}")
+        logger.info("\nObjectives:")
         for objective in self.objectives:
-            print(f"- {objective.name} (weight: {objective.weight})")
+            logger.info(f"- {objective.name} (weight: {objective.weight})")
             
         try:
             # Validate dates
@@ -124,15 +264,17 @@ class UnifiedSolver(BaseSolver):
             if config.ENABLE_SOLUTION_COMPARISON and self._last_stable_response:
                 current_stable = self._last_stable_response
             
-            if config.ENABLE_GENETIC_OPTIMIZATION and self._genetic_optimizer:
-                print("\nUsing genetic algorithm optimizer")
-                response = self._genetic_optimizer.optimize(
+            time_limit = time_limit_seconds if time_limit_seconds is not None else config.SOLVER_TIME_LIMIT_SECONDS
+            
+            if config.ENABLE_GENETIC_OPTIMIZATION and self.use_genetic and self.genetic_optimizer:
+                logger.info("Using genetic algorithm optimizer")
+                response = self.genetic_optimizer.optimize(
                     request=request,
                     weights=self.get_weights(),
-                    time_limit_seconds=config.SOLVER_TIME_LIMIT_SECONDS
+                    time_limit_seconds=time_limit
                 )
-            else:
-                print("\nUsing OR-Tools CP-SAT solver")
+            elif self.use_or_tools:
+                logger.info("Using OR-Tools CP-SAT solver")
                 # Create context and apply constraints
                 context = SchedulerContext(
                     model=self.model,
@@ -145,9 +287,11 @@ class UnifiedSolver(BaseSolver):
                 # Apply constraints through manager
                 self._constraint_manager.apply_all(context)
                 response = super().create_schedule(request)
+            else:
+                raise ValueError("Neither genetic algorithm nor OR-Tools solver is enabled")
             
             # Validate solution
-            print("\nValidating constraints...")
+            logger.info("Validating constraints...")
             validation_context = SchedulerContext(
                 model=None,  # Not needed for validation
                 solver=None,  # Not needed for validation
@@ -162,15 +306,15 @@ class UnifiedSolver(BaseSolver):
                 validation_context
             )
             
-            if violations:
-                print("\nConstraint violations found:")
-                for v in violations:
-                    print(f"- {v.message}")
-                raise Exception(
-                    f"Schedule validation failed with {len(violations)} violations"
-                )
+            self.constraint_violations = violations
             
-            print("\nAll constraints satisfied!")
+            if violations:
+                logger.warning("Constraint violations found:")
+                for v in violations:
+                    logger.warning(f"- {v.message}")
+                logger.warning(f"Schedule validation found {len(violations)} violations")
+            else:
+                logger.info("All constraints satisfied!")
             
             # Store metadata for metrics if enabled
             if config.ENABLE_METRICS:
@@ -183,16 +327,16 @@ class UnifiedSolver(BaseSolver):
                 # Compare with previous stable solution if available
                 if current_stable:
                     comparison = self._compare_solutions(current_stable, response)
-                    print("\nSolution comparison:")
-                    print(f"Total differences: {comparison['assignment_differences']['total_differences']}")
-                    print(f"Score difference: {comparison['metric_differences']['score']}")
+                    logger.info("\nSolution comparison:")
+                    logger.info(f"Total differences: {comparison['assignment_differences']['total_differences']}")
+                    logger.info(f"Score difference: {comparison['metric_differences']['score']}")
                     
             return response
             
         except Exception as e:
-            print(f"Scheduling error in unified solver: {str(e)}")
-            print("Full traceback:")
-            print(traceback.format_exc())
+            logger.error(f"Scheduling error in unified solver: {str(e)}")
+            logger.error("Full traceback:")
+            logger.error(traceback.format_exc())
             raise
 
     def _compare_solutions(self, stable_response: ScheduleResponse, new_response: ScheduleResponse) -> Dict[str, Any]:
