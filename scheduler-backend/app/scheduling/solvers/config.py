@@ -52,6 +52,8 @@ ENABLE_METRICS = bool(int(os.getenv('ENABLE_METRICS', '1')))
 ENABLE_SOLUTION_COMPARISON = bool(int(os.getenv('ENABLE_SOLUTION_COMPARISON', '1')))
 ENABLE_EXPERIMENTAL_DISTRIBUTION = bool(int(os.getenv('ENABLE_EXPERIMENTAL_DISTRIBUTION', '0')))
 ENABLE_GENETIC_OPTIMIZATION = bool(int(os.getenv('ENABLE_GENETIC_OPTIMIZATION', '0')))
+ENABLE_CONSECUTIVE_CLASSES = bool(int(os.getenv('ENABLE_CONSECUTIVE_CLASSES', '1')))
+ENABLE_TEACHER_BREAKS = bool(int(os.getenv('ENABLE_TEACHER_BREAKS', '0')))
 
 # Load genetic algorithm config
 GENETIC_CONFIG = GeneticConfig.from_env()
@@ -77,6 +79,10 @@ from ..constraints.limits import (
     WeeklyLimitConstraint, 
     MinimumPeriodsConstraint
 )
+from ..constraints.teacher_workload import (
+    ConsecutiveClassesConstraint,
+    TeacherBreakConstraint
+)
 
 # Objectives
 from ..objectives.required import RequiredPeriodsObjective
@@ -87,7 +93,7 @@ from ..objectives.daily_balance import DailyBalanceObjective
 
 def get_base_constraints() -> List[Constraint]:
     """Get the common constraints used by all solvers"""
-    return [
+    constraints = [
         SingleAssignmentConstraint(),
         NoOverlapConstraint(),
         InstructorAvailabilityConstraint(),
@@ -97,6 +103,22 @@ def get_base_constraints() -> List[Constraint]:
         WeeklyLimitConstraint(),
         MinimumPeriodsConstraint(),
     ]
+    
+    # Add teacher workload constraints if enabled
+    if ENABLE_CONSECUTIVE_CLASSES:
+        constraints.append(ConsecutiveClassesConstraint(
+            enabled=True,
+            allow_consecutive=True  # Allow pairs of consecutive classes
+        ))
+    
+    if ENABLE_TEACHER_BREAKS:
+        constraints.append(TeacherBreakConstraint(
+            enabled=True,
+            # Will be populated from request.constraints.requiredBreakPeriods during apply()
+            required_breaks=[]
+        ))
+        
+    return constraints
 
 def get_base_objectives() -> List[Objective]:
     """Get the common objectives used by all solvers"""

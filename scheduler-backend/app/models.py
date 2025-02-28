@@ -111,6 +111,8 @@ class ScheduleConstraints(BaseModel):
     consecutiveClassesRule: str
     startDate: str
     endDate: str
+    allowConsecutiveClasses: bool = Field(default=True, description="If true, allows pairs of consecutive classes; if false, no consecutive classes allowed")
+    requiredBreakPeriods: List[int] = Field(default_factory=list, description="List of periods that should be kept free (e.g., lunch periods)")
     
     model_config = {
         'json_schema_extra': {
@@ -121,7 +123,9 @@ class ScheduleConstraints(BaseModel):
                 "maxConsecutiveClasses": 2,
                 "consecutiveClassesRule": "soft",
                 "startDate": "2025-02-12",
-                "endDate": "2025-03-14"
+                "endDate": "2025-03-14",
+                "allowConsecutiveClasses": True,
+                "requiredBreakPeriods": [4]
             }
         }
     }

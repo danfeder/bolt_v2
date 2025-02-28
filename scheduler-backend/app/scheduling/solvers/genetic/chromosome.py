@@ -368,26 +368,36 @@ class ScheduleChromosome:
             if classes_per_week[gene.week] > constraints.maxClassesPerWeek:
                 return False
         
-        # 3. Check consecutive classes if it's a hard constraint
-        if constraints.consecutiveClassesRule == "hard":
-            # Group by week and day
-            daily_schedule: Dict[tuple[int, int], List[int]] = {}
-            for gene in self.genes:
-                key = (gene.week, gene.day_of_week)
-                if key not in daily_schedule:
-                    daily_schedule[key] = []
-                daily_schedule[key].append(gene.period)
+        # 3. Check consecutive classes constraint
+        # Group by week and day
+        daily_schedule: Dict[tuple[int, int], List[int]] = {}
+        for gene in self.genes:
+            key = (gene.week, gene.day_of_week)
+            if key not in daily_schedule:
+                daily_schedule[key] = []
+            daily_schedule[key].append(gene.period)
+        
+        # Check for three consecutive classes (always disallowed)
+        for periods in daily_schedule.values():
+            periods.sort()
             
-            # Check consecutive periods
-            for periods in daily_schedule.values():
-                periods.sort()
-                consecutive_count = 1
-                for i in range(1, len(periods)):
-                    if periods[i] == periods[i-1] + 1:
-                        consecutive_count += 1
-                        if consecutive_count > constraints.maxConsecutiveClasses:
-                            return False
-                    else:
-                        consecutive_count = 1
+            # Check sequences of three consecutive periods
+            for i in range(len(periods) - 2):
+                if (periods[i+1] == periods[i] + 1 and 
+                    periods[i+2] == periods[i+1] + 1):
+                    # Three consecutive periods found - not allowed
+                    return False
+            
+            # Check if pairs are allowed
+            allow_consecutive_pairs = True
+            if hasattr(constraints, 'allowConsecutiveClasses'):
+                allow_consecutive_pairs = constraints.allowConsecutiveClasses
+            
+            # If we don't allow consecutive pairs, check for them
+            if not allow_consecutive_pairs:
+                for i in range(len(periods) - 1):
+                    if periods[i+1] == periods[i] + 1:
+                        # Consecutive pair found when not allowed
+                        return False
         
         return True

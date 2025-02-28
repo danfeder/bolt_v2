@@ -3,6 +3,7 @@ from ..core import ConstraintManager
 from .assignment import SingleAssignmentConstraint, NoOverlapConstraint
 from .instructor import InstructorAvailabilityConstraint
 from .periods import RequiredPeriodsConstraint, ConflictPeriodsConstraint
+from .teacher_workload import ConsecutiveClassesConstraint, TeacherBreakConstraint
 
 __all__ = [
     'BaseConstraint',
@@ -12,5 +13,7 @@ __all__ = [
     'NoOverlapConstraint',
     'InstructorAvailabilityConstraint',
     'RequiredPeriodsConstraint',
-    'ConflictPeriodsConstraint'
+    'ConflictPeriodsConstraint',
+    'ConsecutiveClassesConstraint',
+    'TeacherBreakConstraint'
 ]

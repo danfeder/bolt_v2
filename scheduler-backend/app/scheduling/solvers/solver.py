@@ -94,6 +94,8 @@ class UnifiedSolver(BaseSolver):
         print(f"- Solution comparison enabled: {config.ENABLE_SOLUTION_COMPARISON}")
         print(f"- Experimental distribution enabled: {config.ENABLE_EXPERIMENTAL_DISTRIBUTION}")
         print(f"- Genetic optimization enabled: {config.ENABLE_GENETIC_OPTIMIZATION}")
+        print(f"- Consecutive classes control enabled: {config.ENABLE_CONSECUTIVE_CLASSES}")
+        print(f"- Teacher breaks enabled: {config.ENABLE_TEACHER_BREAKS}")
         if config.ENABLE_GENETIC_OPTIMIZATION:
             print("\nGenetic algorithm configuration:")
             print(f"- Population size: {config.GENETIC_CONFIG.POPULATION_SIZE}")
