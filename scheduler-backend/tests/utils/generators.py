@@ -1,5 +1,6 @@
 """Test data generators for scheduler tests"""
 from datetime import datetime, timedelta
+import uuid
 from app.models import (
     ScheduleRequest, 
     Class, 
@@ -53,8 +54,8 @@ class ClassGenerator:
             "weeklySchedule": weekly_schedule or WeeklySchedule()
         }
         
-        # Add ID field with the appropriate name
-        id_value = class_id or name
+        # Add ID field with the appropriate name - ensure it's unique
+        id_value = class_id or f"{name}-{str(uuid.uuid4())[:8]}"
         
         # Try both field names to handle different model versions
         try:
@@ -63,8 +64,9 @@ class ClassGenerator:
             try:
                 return Class(classId=id_value, **class_args)
             except TypeError:
-                # If neither works, just return with the args we have
+                # If neither works, just return with the args we have but ensure name is unique
                 # The model should have at least one of these fields
+                class_args["name"] = f"{name}-{str(uuid.uuid4())[:8]}"
                 return Class(**class_args)
         
     @staticmethod

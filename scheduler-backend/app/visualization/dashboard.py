@@ -183,16 +183,21 @@ def create_grade_distribution_chart(
     Returns:
         ChartData for grade distribution
     """
-    # Create mapping of class name to grade
-    class_to_grade = {
-        class_obj.name: class_obj.grade
-        for class_obj in classes
-    }
+    # Create mapping of class ID/name to grade
+    class_to_grade = {}
+    for class_obj in classes:
+        # Add both name and id as keys to handle both attribute types
+        if hasattr(class_obj, 'name'):
+            class_to_grade[class_obj.name] = class_obj.grade
+        if hasattr(class_obj, 'id'):
+            class_to_grade[class_obj.id] = class_obj.grade
     
     # Count assignments per grade
     by_grade = defaultdict(int)
     for assignment in assignments:
-        grade = class_to_grade.get(assignment.name, "Unknown")
+        # Handle both classId and name attributes
+        class_identifier = getattr(assignment, "classId", getattr(assignment, "name", None))
+        grade = class_to_grade.get(class_identifier, "Unknown")
         by_grade[grade] += 1
     
     # Create data points
@@ -248,16 +253,21 @@ def create_grade_period_heatmap(
     Returns:
         List of heatmap cells for grade-period distribution
     """
-    # Create mapping of class name to grade
-    class_to_grade = {
-        class_obj.name: class_obj.grade
-        for class_obj in classes
-    }
+    # Create mapping of class ID/name to grade
+    class_to_grade = {}
+    for class_obj in classes:
+        # Add both name and id as keys to handle both attribute types
+        if hasattr(class_obj, 'name'):
+            class_to_grade[class_obj.name] = class_obj.grade
+        if hasattr(class_obj, 'id'):
+            class_to_grade[class_obj.id] = class_obj.grade
     
     # Count assignments per grade and period
     by_grade_period = defaultdict(lambda: defaultdict(int))
     for assignment in assignments:
-        grade = class_to_grade.get(assignment.name, "Unknown")
+        # Handle both classId and name attributes
+        class_identifier = getattr(assignment, "classId", getattr(assignment, "name", None))
+        grade = class_to_grade.get(class_identifier, "Unknown")
         period = assignment.timeSlot.period
         by_grade_period[grade][period] += 1
     
@@ -294,28 +304,34 @@ def calculate_constraint_satisfaction(
     """
     metrics = []
     
-    # Create mapping of class name to class object
-    class_by_name = {
-        class_obj.name: class_obj
-        for class_obj in classes
-    }
+    # Create mapping of class ID/name to class object
+    class_by_id = {}
+    for class_obj in classes:
+        # Add both name and id as keys to handle both attribute types
+        if hasattr(class_obj, 'name'):
+            class_by_id[class_obj.name] = class_obj
+        if hasattr(class_obj, 'id'):
+            class_by_id[class_obj.id] = class_obj
     
-    # Create mapping of assignments by class name
+    # Create mapping of assignments by class identifier (either classId or name)
     assignments_by_class = defaultdict(list)
     for assignment in assignments:
-        assignments_by_class[assignment.name].append(assignment)
+        # Handle both classId and name attributes
+        class_identifier = getattr(assignment, "classId", getattr(assignment, "name", None))
+        if class_identifier:
+            assignments_by_class[class_identifier].append(assignment)
     
     # Check required periods satisfaction
     required_satisfied = 0
     required_total = 0
     
-    for class_name, class_obj in class_by_name.items():
+    for class_id, class_obj in class_by_id.items():
         if hasattr(class_obj, "weeklySchedule") and class_obj.weeklySchedule.requiredPeriods:
             required_periods = class_obj.weeklySchedule.requiredPeriods
             required_total += len(required_periods)
             
             # Check if each required period is satisfied
-            class_assignments = assignments_by_class.get(class_name, [])
+            class_assignments = assignments_by_class.get(class_id, [])
             for required in required_periods:
                 # Check if this required period is in the assignments
                 if any(
@@ -340,13 +356,13 @@ def calculate_constraint_satisfaction(
     preferred_satisfied = 0
     preferred_total = 0
     
-    for class_name, class_obj in class_by_name.items():
+    for class_id, class_obj in class_by_id.items():
         if hasattr(class_obj, "weeklySchedule") and class_obj.weeklySchedule.preferredPeriods:
             preferred_periods = class_obj.weeklySchedule.preferredPeriods
             preferred_total += len(preferred_periods)
             
             # Check if each preferred period is satisfied
-            class_assignments = assignments_by_class.get(class_name, [])
+            class_assignments = assignments_by_class.get(class_id, [])
             for preferred in preferred_periods:
                 # Check if this preferred period is in the assignments
                 if any(
@@ -371,13 +387,13 @@ def calculate_constraint_satisfaction(
     avoided_satisfied = 0
     avoided_total = 0
     
-    for class_name, class_obj in class_by_name.items():
+    for class_id, class_obj in class_by_id.items():
         if hasattr(class_obj, "weeklySchedule") and class_obj.weeklySchedule.avoidPeriods:
             avoid_periods = class_obj.weeklySchedule.avoidPeriods
             avoided_total += len(avoid_periods)
             
             # Check if each avoid period is not used
-            class_assignments = assignments_by_class.get(class_name, [])
+            class_assignments = assignments_by_class.get(class_id, [])
             for avoid in avoid_periods:
                 # Check if this avoid period is NOT in the assignments
                 if not any(
@@ -446,7 +462,9 @@ def calculate_quality_metrics(
     """
     # Extract distribution score from metadata if available
     distribution_score = 0.0
-    if metadata and hasattr(metadata, 'distribution') and metadata.distribution:
+    
+    # Check if metadata has a distribution attribute with totalScore
+    if metadata and metadata.distribution and hasattr(metadata.distribution, 'totalScore'):
         distribution_score = min(100, max(0, 100 + metadata.distribution.totalScore / 1000))
     else:
         # Calculate basic distribution metrics

@@ -323,8 +323,11 @@ class ScheduleChromosome:
             days_to_add = gene.week * 7 + (gene.day_of_week - 1)
             assignment_date = self.start_date + timedelta(days=days_to_add)
             
+            # Make name unique by adding a hash based on date and time slot
+            unique_suffix = f"{assignment_date.strftime('%Y%m%d')}-p{gene.period}"
             assignment = ScheduleAssignment(
-                name=gene.class_id,
+                name=f"{gene.class_id}-{unique_suffix}",  # Make name unique to avoid overlap errors
+                classId=gene.class_id,  # Keep original class ID for reference
                 date=assignment_date.strftime("%Y-%m-%d"),
                 timeSlot=gene.to_time_slot()
             )
@@ -335,7 +338,8 @@ class ScheduleChromosome:
             duration_ms=0,
             solutions_found=1,
             score=self.fitness,
-            gap=0.0
+            gap=0.0,
+            distribution=None  # Will be populated later if needed
         )
         
         return ScheduleResponse(assignments=assignments, metadata=metadata)

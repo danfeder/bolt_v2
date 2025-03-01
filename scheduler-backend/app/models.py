@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, ForwardRef, Any, Union
 from pydantic import BaseModel, Field, RootModel
 from datetime import datetime, time
 
@@ -172,6 +172,7 @@ class ScheduleRequest(BaseModel):
 
 class ScheduleAssignment(BaseModel):
     name: str = Field(..., description="Class name (e.g., PK207)")
+    classId: Optional[str] = Field(None, description="Class ID (alternative to name)")
     date: str
     timeSlot: TimeSlot
     
@@ -179,6 +180,7 @@ class ScheduleAssignment(BaseModel):
         'json_schema_extra': {
             "example": {
                 "name": "PK207",
+                "classId": "class-123",
                 "date": "2025-02-12",
                 "timeSlot": {
                     "dayOfWeek": 1,
@@ -193,6 +195,7 @@ class ScheduleMetadata(BaseModel):
     solutions_found: int
     score: float
     gap: float
+    distribution: Optional[Any] = None
     
     model_config = {
         'json_schema_extra': {
@@ -200,7 +203,8 @@ class ScheduleMetadata(BaseModel):
                 "duration_ms": 1000,
                 "solutions_found": 1,
                 "score": -857960000,
-                "gap": -1.13
+                "gap": -1.13,
+                "distribution": None
             }
         }
     }

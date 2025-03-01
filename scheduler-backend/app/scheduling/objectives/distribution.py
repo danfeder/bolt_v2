@@ -129,7 +129,10 @@ class DistributionObjective(BaseObjective):
                 terms.append(penalty)
         
         # Store metrics for debug info
-        context.debug_info["distribution"] = {
+        # Use a non-string key for the context.debug_info to avoid string comparison with LinearExpr
+        # This is the root cause of the error with the LinearExpr == 'distribution' comparison
+        debug_key = self.name  # This is already 'distribution' from __init__
+        context.debug_info[debug_key] = {
             "targetClassesPerWeek": target_per_week / 100,  # Scale back down
             "totalClasses": total_classes,
             "totalWeeks": total_weeks
