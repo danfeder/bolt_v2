@@ -15,8 +15,10 @@ The primary focus should be ensuring the application is stable, testable, and pr
    - ✅ Fix Dashboard API tests for schedule comparison
    - ✅ Resolve attribute access issues with Pydantic models
    - ✅ Fix the WeeklyDistributionMetrics access in solver.py 
-   - Resolve the `httpx` and other dependency issues
-   - Get test coverage to at least 75% for critical paths
+   - ✅ Fix scheduler integration tests for required periods
+   - ✅ Fixed consecutive class constraint handling in edge cases
+   - ✅ Resolved httpx dependency issues in requirements.txt
+   - Get test coverage to at least 75% for critical paths (currently at 53%)
 
 2. **Environment Standardization**
    - Document the correct virtual environment setup
@@ -62,7 +64,7 @@ The frontend dashboard integration has been successfully completed, providing us
 
 ## 3. Genetic Algorithm Refinement
 
-**Priority: Medium**  
+**Priority: High**  
 **Estimated Timeline: 3-4 weeks**
 
 Improve the genetic algorithm's performance and capabilities to generate better schedules more efficiently.

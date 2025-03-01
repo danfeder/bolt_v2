@@ -252,12 +252,15 @@
    - Seasonal Adaptations for different activity requirements
 
 ## Change Log 
-### March 1, 2025 (2nd update)
-- Fixed Dashboard API comparison functionality
-- Resolved issue with WeeklyDistributionMetrics access in solver.py
-- Updated attribute access in distribution metrics for Pydantic models
-- All dashboard API tests now passing successfully
-- Improved stability of schedule comparison features
+### March 1, 2025
+- Fixed all integration tests in the scheduler
+- Completed Dashboard API integration and frontend implementation
+- Fixed dashboard API attribute access in Pydantic models
+- Resolved consecutive class constraint handling in edge cases
+- Improved test suite reliability and logging
+- Increased code coverage to 53% (from 41%)
+- Fixed httpx dependency issue in requirements.txt
+- Added necessary testing dependencies (pytest-anyio)
 
 ### March 1, 2025 (1st update)
 - Completed frontend dashboard integration

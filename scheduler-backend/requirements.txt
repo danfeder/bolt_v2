@@ -7,11 +7,13 @@ uvicorn>=0.15.0
 pydantic>=1.8.0
 python-dateutil>=2.8.2
 ortools>=9.3.10497
+httpx>=0.28.1  # Required for FastAPI TestClient
 
 # Testing dependencies
 pytest>=7.0.0
 pytest-cov>=3.0.0  # For coverage reporting
 pytest-xdist>=2.5.0  # For parallel test execution
+pytest-anyio>=0.0.0  # Required for FastAPI async testing
 psutil>=5.8.0  # For performance monitoring
 freezegun>=1.2.0  # For date/time mocking in tests
 
