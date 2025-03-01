@@ -5,6 +5,9 @@ import os
 from dateutil import parser
 import logging
 
+# Set up logger
+logger = logging.getLogger(__name__)
+
 from ..core import SchedulerContext, ConstraintManager, SolverConfig
 from . import config
 from .config import (
@@ -149,10 +152,10 @@ class UnifiedSolver(BaseSolver):
         return {
             "status": "success",
             "metrics": {
-                "duration": self._last_run_metadata.duration,
+                "duration": self._last_run_metadata.duration_ms,
                 "score": self._last_run_metadata.score,
                 "solutions_found": self._last_run_metadata.solutions_found,
-                "optimization_gap": self._last_run_metadata.optimization_gap,
+                "optimization_gap": self._last_run_metadata.gap,
                 "distribution": self._last_run_metadata.distribution.dict() if self._last_run_metadata.distribution else None
             }
         }
@@ -312,7 +315,15 @@ class UnifiedSolver(BaseSolver):
             self.tune_weights(req)
             
         # Create schedule
-        response = self.create_schedule(req, time_limit)
+        try:
+            response = self.create_schedule(req, time_limit)
+            logger.info(f"Schedule created successfully with {len(response.assignments) if hasattr(response, 'assignments') else 0} assignments")
+        except Exception as e:
+            logger.error(f"Error creating schedule: {str(e)}")
+            logger.error(f"Request details: Classes={len(req.classes)}, Date range={req.startDate} to {req.endDate}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
         
         # If no solution found and relaxation is enabled, try with relaxation
         if with_relaxation and self.enable_relaxation and (
@@ -540,20 +551,20 @@ class UnifiedSolver(BaseSolver):
             },
             "metric_differences": {
                 "score": new_score - stable_score,
-                "duration": new_response.metadata.duration - stable_response.metadata.duration,
+                "duration": new_response.metadata.duration_ms - stable_response.metadata.duration_ms,
                 "distribution": {
                     "score_difference": new_score - stable_score,
                     "weekly_variance_difference": (
-                        (new_response.metadata.distribution.weekly["variance"] if new_response.metadata.distribution else 0) -
-                        (stable_response.metadata.distribution.weekly["variance"] if stable_response.metadata.distribution else 0)
+                        (new_response.metadata.distribution.weekly.variance if new_response.metadata.distribution else 0) -
+                        (stable_response.metadata.distribution.weekly.variance if stable_response.metadata.distribution else 0)
                     ),
                     "average_period_spread_difference": (
                         sum(
-                            new_response.metadata.distribution.daily[date]["periodSpread"] if new_response.metadata.distribution else 0
+                            new_response.metadata.distribution.daily[date].periodSpread if new_response.metadata.distribution else 0
                             for date in new_response.metadata.distribution.daily
                         ) / len(new_response.metadata.distribution.daily) -
                         sum(
-                            stable_response.metadata.distribution.daily[date]["periodSpread"] if stable_response.metadata.distribution else 0
+                            stable_response.metadata.distribution.daily[date].periodSpread if stable_response.metadata.distribution else 0
                             for date in stable_response.metadata.distribution.daily
                         ) / len(stable_response.metadata.distribution.daily)
                         if stable_response.metadata.distribution and new_response.metadata.distribution

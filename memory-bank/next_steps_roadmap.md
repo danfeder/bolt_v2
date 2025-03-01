@@ -12,9 +12,10 @@ The primary focus should be ensuring the application is stable, testable, and pr
 ### Tasks:
 
 1. **Fix Integration Tests**
+   - ✅ Fix Dashboard API tests for schedule comparison
+   - ✅ Resolve attribute access issues with Pydantic models
+   - ✅ Fix the WeeklyDistributionMetrics access in solver.py 
    - Resolve the `httpx` and other dependency issues
-   - Fix the syntax error in `main.py`
-   - Ensure all imports are correctly defined across modules
    - Get test coverage to at least 75% for critical paths
 
 2. **Environment Standardization**
@@ -24,12 +25,12 @@ The primary focus should be ensuring the application is stable, testable, and pr
    - Ensure consistent behavior across development and testing
 
 3. **Error Handling Improvements**
-   - Add structured error handling throughout the application
-   - Implement proper logging for all critical components
+   - ✅ Fixed structured error handling in dashboard API endpoints
+   - Add proper logging for all critical components
    - Add graceful failures for solver timeouts
    - Create user-friendly error messages for API endpoints
 
-## 2. Frontend Dashboard Integration ✅ (COMPLETED)
+## 2. Frontend Dashboard Integration 
 
 **Priority: ~~High~~ COMPLETED**  
 **Actual Timeline: Completed March 1, 2025**
@@ -38,7 +39,7 @@ The frontend dashboard integration has been successfully completed, providing us
 
 ### Completed Tasks:
 
-1. **Chart Component Development ✅**
+1. **Chart Component Development **
    - Selected and implemented ApexCharts as the charting library
    - Created components for each chart type:
      - Daily distribution bar chart (DistributionChart)
@@ -47,13 +48,13 @@ The frontend dashboard integration has been successfully completed, providing us
      - Grade-period heatmap (GradePeriodHeatmap)
    - Added interactive charts with tooltips and responsive design
 
-2. **Dashboard Layout ✅**
+2. **Dashboard Layout **
    - Implemented a responsive dashboard layout
    - Integrated all visualization components
    - Added dashboard as a main tab in the application
    - Created ScheduleComparison component for A/B testing schedules
 
-3. **API Integration ✅**
+3. **API Integration **
    - Connected to all dashboard API endpoints through enhanced apiClient.ts
    - Implemented data fetching with loading states
    - Added error handling for API failures
