@@ -5,6 +5,7 @@ import { FileUpload } from './FileUpload';
 import { Calendar } from './Calendar';
 import { ScheduleDebugPanel } from './ScheduleDebugPanel';
 import { SolverConfig } from './SolverConfig';
+import { Dashboard } from './dashboard';
 
 /**
  * TabContainer manages the main scheduling workflow through three tabs:
@@ -22,6 +23,7 @@ export const TabContainer: React.FC = () => {
   const tabs: { id: SchedulerTab; label: string }[] = [
     { id: 'setup', label: 'Setup' },
     { id: 'visualize', label: 'Visualization' },
+    { id: 'dashboard', label: 'Dashboard' },
     { id: 'debug', label: 'Debug' }
   ];
 
@@ -70,6 +72,12 @@ export const TabContainer: React.FC = () => {
         {currentTab === 'visualize' && (
           <div className="bg-white shadow rounded-lg p-6">
             <Calendar />
+          </div>
+        )}
+
+        {currentTab === 'dashboard' && (
+          <div className="bg-white shadow rounded-lg p-6">
+            <Dashboard />
           </div>
         )}
 

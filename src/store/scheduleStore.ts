@@ -56,6 +56,7 @@ interface ScheduleState extends TabState {
 const defaultTabValidation: TabValidationState = {
   setup: false,
   visualize: false,
+  dashboard: false,
   debug: false
 };
 
@@ -83,6 +84,8 @@ export const useScheduleStore = create<ScheduleState>((
         return state.classes.length > 0 && state.instructorAvailability.length > 0;
       case 'visualize':
         return state.assignments.length > 0;
+      case 'dashboard':
+        return state.assignments.length > 0 && state.lastGenerationMetadata !== null;
       case 'debug':
         return state.lastGenerationMetadata !== null;
       default:
@@ -225,13 +228,28 @@ export const useScheduleStore = create<ScheduleState>((
 
     setCurrentTab: (tab: SchedulerTab) => {
       const isValid = validateTab(tab);
-      set({ 
-        currentTab: tab,
-        tabValidation: {
+      
+      // Special handling when switching to dashboard tab
+      if (tab === 'dashboard' && isValid) {
+        // Mark visualize tab as complete if it's not already
+        const updatedValidation = {
           ...get().tabValidation,
-          [tab]: isValid
-        }
-      });
+          [tab]: isValid,
+          visualize: true
+        };
+        set({ 
+          currentTab: tab,
+          tabValidation: updatedValidation
+        });
+      } else {
+        set({ 
+          currentTab: tab,
+          tabValidation: {
+            ...get().tabValidation,
+            [tab]: isValid
+          }
+        });
+      }
     },
 
     validateTab,

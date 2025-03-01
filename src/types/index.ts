@@ -116,7 +116,7 @@ export interface SolverWeights {
 }
 
 // New interfaces for tabbed interface
-export type SchedulerTab = 'setup' | 'visualize' | 'debug';
+export type SchedulerTab = 'setup' | 'visualize' | 'dashboard' | 'debug';
 
 export interface TabState {
   currentTab: SchedulerTab;
@@ -127,5 +127,6 @@ export interface TabState {
 export interface TabValidationState {
   setup: boolean;
   visualize: boolean;
+  dashboard: boolean;
   debug: boolean;
 }

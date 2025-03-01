@@ -8,6 +8,12 @@ import type {
   GeneticSolverConfig,
   SolverConfig
 } from '../types';
+import type {
+  DashboardData,
+  ChartData,
+  ScheduleQualityMetrics,
+  ScheduleComparisonResult
+} from '../types/dashboard';
 import type { ComparisonResult } from '../store/types';
 
 class ApiClient {
@@ -70,6 +76,150 @@ class ApiClient {
     
     const result = await response.json();
     return result;
+  }
+
+  /**
+   * Analyze schedule and get dashboard data
+   * @param classes Classes to schedule
+   * @param instructorAvailability Teacher availability
+   * @param constraints Scheduling constraints
+   * @param solverType Solver type to use
+   */
+  async analyzeDashboard(
+    classes: Class[],
+    instructorAvailability: InstructorAvailability[],
+    constraints: ScheduleConstraints,
+    solverType: 'stable' | 'dev' = 'stable'
+  ): Promise<DashboardData> {
+    // Create request body
+    const request: ScheduleRequest = {
+      classes,
+      instructorAvailability,
+      startDate: constraints.startDate,
+      endDate: constraints.endDate,
+      constraints: {
+        maxClassesPerDay: constraints.maxClassesPerDay,
+        maxClassesPerWeek: constraints.maxClassesPerWeek,
+        minPeriodsPerWeek: constraints.minPeriodsPerWeek,
+        maxConsecutiveClasses: constraints.maxConsecutiveClasses,
+        consecutiveClassesRule: constraints.consecutiveClassesRule,
+        startDate: constraints.startDate,
+        endDate: constraints.endDate
+      },
+    };
+
+    try {
+      const response = await fetch(`${this.baseUrl}/dashboard/analyze?solver_type=${solverType}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || data.message || 'Failed to analyze schedule');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Dashboard analysis error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Compare two schedules
+   * @param baselineId Baseline schedule ID
+   * @param comparisonId Comparison schedule ID
+   */
+  async compareSchedulesDashboard(
+    baselineId: string,
+    comparisonId: string
+  ): Promise<ScheduleComparisonResult[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/dashboard/compare`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          baseline_id: baselineId,
+          comparison_id: comparisonId
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || data.message || 'Failed to compare schedules');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Schedule comparison error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get schedule history
+   */
+  async getScheduleHistory(): Promise<{ id: string; timestamp: string; metrics: ScheduleQualityMetrics }[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/dashboard/history`);
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || data.message || 'Failed to get schedule history');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Schedule history error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get schedule metrics
+   * @param scheduleId Schedule ID
+   */
+  async getScheduleMetrics(scheduleId: string): Promise<ScheduleQualityMetrics> {
+    try {
+      const response = await fetch(`${this.baseUrl}/dashboard/metrics/${scheduleId}`);
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || data.message || 'Failed to get schedule metrics');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Schedule metrics error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get chart data
+   * @param chartType Chart type
+   * @param scheduleId Schedule ID
+   */
+  async getChartData(chartType: 'daily' | 'period' | 'grade', scheduleId: string): Promise<ChartData> {
+    try {
+      const response = await fetch(`${this.baseUrl}/dashboard/chart/${chartType}/${scheduleId}`);
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || data.message || 'Failed to get chart data');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Chart data error:', error);
+      throw error;
+    }
   }
 }
 
