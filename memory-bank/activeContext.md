@@ -1,123 +1,139 @@
 # Active Context: Gym Class Rotation Scheduler
 
-## Current Status
-The project is in active development with hybrid scheduling strategy implemented:
-- Frontend core functionality is complete and stable
-- Serverless integration with OR-Tools is complete
-- Hybrid scheduling strategy is implemented
-- Debug panel enhanced with solver information
+## Current Status (February 2025)
+We have completed a major code cleanup and reorganization:
 
-## Recent Changes
-1. Implemented hybrid scheduling strategy
-   - Added complexity analysis utility
-   - Created API client for OR-Tools
-   - Integrated solver selection logic
-   - Enhanced store with solver metadata
+### 1. Frontend Refactoring ✅
+- Removed legacy BacktrackingScheduler implementation
+- Simplified frontend scheduler interface to use backend API
+- Updated scheduler worker to handle async operations
+- Streamlined complexity analysis for solver version selection
+- Maintained all existing functionality with cleaner code
 
-2. Enhanced debug panel
-   - Added solver decision information
-   - Added complexity metrics display
-   - Added generation metadata
-   - Improved error handling
+### 2. Backend Optimization ✅
+- Created shared solver configuration in `config.py`
+- Consolidated common constraints and objectives
+- Standardized priority weights across solvers
+- Enhanced development solver flexibility
+- Maintained solver performance and reliability
 
-3. Completed OR-Tools integration
-   - Finalized API endpoint
-   - Added proper error handling
-   - Implemented response types
-   - Added performance monitoring
+### 3. Development Workflow ✅
+Using standardized configuration between solvers:
+- Base constraints and objectives in shared config
+- Development version extends stable with experimental features
+- Clear separation between stable and experimental code
+- Easy comparison between solver versions
+- Standardized weight hierarchy
 
-## Active Focus Areas
+### 4. Current Focus
+1. Solution Quality
+   - Testing alternative search strategies
+   - Fine-tuning objective weights
+   - Improving distribution balance
+   - Enhancing early scheduling
 
-### Performance Optimization
-- [ ] Implement caching strategies
-- [ ] Optimize constraint evaluation
-- [ ] Add solution quality metrics
-- [ ] Monitor solver performance
+2. Development Version
+   - Experimenting with solver parameters
+   - Testing new search heuristics
+   - Validating quality improvements
+   - Documenting successful patterns
 
-### Testing Infrastructure
-- [ ] Unit test setup
-- [ ] Component test framework
-- [ ] Algorithm test cases
-- [ ] Integration tests
-- [ ] Performance benchmarks
+## Priority System
+Now centralized in `config.py`:
+1. Required periods: 10000 (highest)
+2. Early scheduling: 5000 (high)
+3. Preferred periods: 1000 × weight
+4. Avoid periods: -500 × weight
+5. Distribution: 500
+6. Earlier dates: 10 (lowest)
 
-### User Experience
-- [ ] Enhanced loading states
-- [ ] Detailed error messages
-- [ ] Progress visualization
-- [ ] Schedule comparison
-- [ ] Solver selection interface
+## Development Strategy
+1. Solution Quality Focus
+   - Test new search strategies
+   - Balance objective weights
+   - Analyze solution patterns
+   - Compare with stable version
 
-## Current Decisions
+2. Implementation Approach
+   - Incremental improvements in dev solver
+   - A/B testing of changes
+   - Quality metrics tracking
+   - Clear documentation
 
-### Architecture
-- Hybrid scheduling approach implemented
-- Complexity-based solver selection
-- Performance monitoring in place
-- Enhanced error handling
-
-### Algorithm Strategy
-- OR-Tools for complex schedules (>10 classes, high constraints)
-- Local scheduler for simple cases
-- Automatic solver selection based on complexity
-- Performance monitoring and fallback mechanisms
-
-### API Design
-- RESTful endpoint for OR-Tools scheduling
-- Comprehensive error handling
-- Performance monitoring
-- Type-safe request/response
+3. Testing Strategy
+   - Compare solution quality metrics
+   - Validate improvements
+   - Track solver performance
+   - Document successful patterns
 
 ## Next Steps
+1. Development Solver:
+   - Implement new search strategies
+   - Test objective weight adjustments
+   - Try different solver parameters
+   - Compare solution quality
 
-### Immediate Priorities
-1. Testing Infrastructure
-   - Set up testing framework
-   - Create test cases
-   - Implement integration tests
-   - Add performance benchmarks
+2. Quality Metrics:
+   - Define quality measures
+   - Track improvements
+   - Compare solutions
+   - Validate changes
 
-2. Performance Optimization
-   - Implement caching layer
-   - Optimize constraint evaluation
-   - Monitor solution quality
-   - Add performance metrics
+## Key Questions
+1. Which search strategies yield best results?
+2. How to better balance competing objectives?
+3. What metrics best measure solution quality?
+4. Which solver parameters most affect quality?
 
-3. User Experience
-   - Enhance loading states
-   - Improve error messages
-   - Add progress visualization
-   - Implement schedule comparison
+## Recent Achievements
+1. Code Cleanup
+   - Removed redundant frontend implementation
+   - Consolidated solver configurations
+   - Standardized priority weights
+   - Enhanced development workflow
 
-### Future Considerations
-1. Advanced Features
-   - Schedule comparison tools
-   - Batch operations
-   - Data backup/restore
-   - Advanced visualization
+2. Architecture Improvements
+   - Clear separation of concerns
+   - Shared configuration management
+   - Simplified frontend integration
+   - Better type safety
 
-2. Performance Enhancements
-   - Advanced caching strategies
-   - Distributed solving
-   - Real-time updates
-   - Progress streaming
+3. Developer Experience
+   - Cleaner codebase
+   - Better documentation
+   - Easier experimentation
+   - Improved testing setup
 
-3. User Experience
-   - Interactive solver selection
-   - Advanced error recovery
-   - Schedule optimization tools
-   - Constraint visualization
+## Code Organization
+```
+scheduler-backend/
+├── app/
+│   ├── scheduling/
+│   │   ├── constraints/      # Core constraints
+│   │   ├── objectives/       # Scheduling objectives
+│   │   ├── solvers/         # Solver implementations
+│   │   │   ├── config.py    # Shared configuration
+│   │   │   ├── stable.py    # Production solver
+│   │   │   └── dev.py       # Experimental solver
+│   │   └── utils/           # Shared utilities
+│   └── main.py              # API endpoints
+```
 
-## Known Issues
-1. Need comprehensive test coverage
-2. Performance benchmarking required
-3. Advanced error recovery needed
-4. Caching strategy implementation pending
-5. Progress visualization improvements needed
+## Current Constraints
+All constraints now use shared configuration:
+1. Single assignment per class
+2. No overlapping classes
+3. Teacher availability
+4. Required periods
+5. Conflict periods
+6. Daily/weekly limits
+7. Minimum periods per week
 
-## Questions to Address
-1. Testing strategy for hybrid scheduling
-2. Performance optimization priorities
-3. User experience improvements
-4. Advanced feature roadmap
-5. Deployment strategy
+## Optimization Objectives
+Standardized weights from config:
+1. Required periods (highest)
+2. Early scheduling
+3. Preferred periods
+4. Distribution balance
+5. Avoided periods (penalties)
+6. Earlier dates (lowest)

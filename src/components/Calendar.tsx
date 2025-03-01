@@ -6,7 +6,7 @@ import { format, addWeeks, subWeeks, startOfWeek, eachDayOfInterval, endOfWeek, 
 const PERIODS = Array.from({ length: 8 }, (_, i) => i + 1);
 
 export const Calendar: React.FC = () => {
-  const { assignments, classes, constraints } = useScheduleStore();
+  const { assignments, constraints } = useScheduleStore();
   const [currentWeek, setCurrentWeek] = React.useState(() => 
     new Date(constraints.startDate)
   );
@@ -30,10 +30,6 @@ export const Calendar: React.FC = () => {
       return startOfDay(assignmentDate).getTime() === startOfDay(date).getTime() && 
              a.timeSlot.period === period;
     });
-  };
-
-  const getClassName = (classId: string) => {
-    return classes.find(c => c.id === classId)?.name || 'Unknown';
   };
 
   const navigateWeek = (direction: 'prev' | 'next') => {
@@ -111,9 +107,12 @@ export const Calendar: React.FC = () => {
                         className={`border p-2 ${!isInScheduleRange ? 'bg-gray-50' : ''}`}
                       >
                         {isInScheduleRange && dateAssignments.map(assignment => (
-                          <div key={assignment.classId} className="p-2 bg-blue-50 rounded">
+                          <div 
+                            key={`${assignment.date}-${assignment.timeSlot.period}-${assignment.name}`} 
+                            className="p-2 bg-blue-50 rounded"
+                          >
                             <div className="font-medium">
-                              {getClassName(assignment.classId)}
+                              {assignment.name}
                             </div>
                           </div>
                         ))}

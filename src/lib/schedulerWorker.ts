@@ -1,5 +1,5 @@
 // Web Worker for handling scheduling computation
-import BacktrackingScheduler from './scheduler';
+import Scheduler from './scheduler';
 import type { Class, TeacherAvailability, ScheduleAssignment } from '../types';
 
 interface ScheduleRequest {
@@ -12,27 +12,19 @@ interface ScheduleRequest {
   minPeriodsPerWeek: number;
   maxConsecutiveClasses: 1 | 2;
   consecutiveClassesRule: 'hard' | 'soft';
+  version?: 'stable' | 'dev';
 }
 
-self.onmessage = (e: MessageEvent<ScheduleRequest>) => {
+self.onmessage = async (e: MessageEvent<ScheduleRequest>) => {
   try {
-    const scheduler = new BacktrackingScheduler({
+    const scheduler = new Scheduler({
       ...e.data,
       startDate: new Date(e.data.startDate),
       endDate: new Date(e.data.endDate)
     });
 
-    // Send progress updates every 100ms
-    let lastUpdate = Date.now();
-    scheduler.onProgress = (progress) => {
-      const now = Date.now();
-      if (now - lastUpdate >= 100) {
-        self.postMessage({ type: 'progress', progress });
-        lastUpdate = now;
-      }
-    };
-
-    const assignments = scheduler.solve();
+    // Progress updates are now handled by the backend
+    const assignments = await scheduler.solve(e.data.version);
     self.postMessage({ type: 'success', assignments });
   } catch (error) {
     self.postMessage({ 
