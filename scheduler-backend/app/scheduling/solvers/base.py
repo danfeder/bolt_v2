@@ -223,9 +223,8 @@ class BaseSolver:
                     if callback._best_objective != 0
                     else 0.0
                 ),
-                # We don't need to check 'distribution' in objective_terms
-                # since we already found the DistributionObjective above
-                distribution=distribution_metrics if distribution_obj is not None else None
+                distribution=distribution_metrics if distribution_obj is not None else None,
+                solver=self.name
             )
             
             print("\nSolution metrics:")

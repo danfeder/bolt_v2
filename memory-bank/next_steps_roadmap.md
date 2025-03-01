@@ -18,7 +18,10 @@ The primary focus should be ensuring the application is stable, testable, and pr
    - ✅ Fix scheduler integration tests for required periods
    - ✅ Fixed consecutive class constraint handling in edge cases
    - ✅ Resolved httpx dependency issues in requirements.txt
+   - ✅ Fixed genetic algorithm test suite issues (method names, attribute access, parameter ordering)
    - Get test coverage to at least 75% for critical paths (currently at 53%)
+     - Genetic algorithm components now at 88-95% coverage
+     - Remaining test issues: WeightConfig initialization, solver parameter discrepancies
 
 2. **Environment Standardization**
    - Document the correct virtual environment setup

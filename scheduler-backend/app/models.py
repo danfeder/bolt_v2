@@ -196,6 +196,12 @@ class ScheduleMetadata(BaseModel):
     score: float
     gap: float
     distribution: Optional[Any] = None
+    solver: Optional[str] = None
+    
+    @property
+    def duration(self) -> float:
+        """Duration in seconds, converted from milliseconds for backward compatibility."""
+        return self.duration_ms / 1000.0
     
     model_config = {
         'json_schema_extra': {
@@ -204,7 +210,8 @@ class ScheduleMetadata(BaseModel):
                 "solutions_found": 1,
                 "score": -857960000,
                 "gap": -1.13,
-                "distribution": None
+                "distribution": None,
+                "solver": "cp-sat-unified"
             }
         }
     }
@@ -221,7 +228,9 @@ class ScheduleResponse(BaseModel):
                     "duration_ms": 1000,
                     "solutions_found": 1,
                     "score": -857960000,
-                    "gap": -1.13
+                    "gap": -1.13,
+                    "distribution": None,
+                    "solver": "cp-sat-unified"
                 }
             }
         }
