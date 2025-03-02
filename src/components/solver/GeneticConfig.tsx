@@ -130,6 +130,7 @@ export const GeneticConfig: React.FC<GeneticConfigProps> = ({
                   value={config[param.key] as number}
                   onChange={handleInputChange(param.key)}
                   disabled={disabled}
+                  data-testid={`genetic-${param.key}`}
                   className={`w-full appearance-none h-2 bg-gray-200 rounded cursor-pointer
                     ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 />

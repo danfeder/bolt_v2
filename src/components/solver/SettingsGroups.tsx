@@ -116,6 +116,7 @@ export const SettingSlider: React.FC<SettingSliderProps> = ({
       
       <input
         id={`setting-${key}`}
+        data-testid={`setting-${key}`}
         type="range"
         min={min}
         max={max}
