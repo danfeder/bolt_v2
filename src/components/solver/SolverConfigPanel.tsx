@@ -6,11 +6,32 @@ import { WeightConfig } from './WeightConfig';
 import { GeneticConfig } from './GeneticConfig';
 
 /**
+ * Deep equality comparison helper for objects
+ */
+const isEqual = (obj1: any, obj2: any): boolean => {
+  if (obj1 === obj2) return true;
+  if (!obj1 || !obj2) return false;
+  
+  const keys1 = Object.keys(obj1);
+  const keys2 = Object.keys(obj2);
+  
+  if (keys1.length !== keys2.length) return false;
+  
+  return keys1.every(key => {
+    if (typeof obj1[key] === 'object' && typeof obj2[key] === 'object') {
+      return isEqual(obj1[key], obj2[key]);
+    }
+    return obj1[key] === obj2[key];
+  });
+};
+
+/**
  * Main component for managing solver configuration
  */
 export const SolverConfigPanel: React.FC = () => {
-  const solverConfig = useScheduleStore(state => state.solverConfig);
-  const setSolverConfig = useScheduleStore(state => state.setSolverConfig);
+  // Get state from the store using the correct property names
+  const geneticConfig = useScheduleStore(state => state.geneticConfig);
+  const setGeneticConfig = useScheduleStore(state => state.setGeneticConfig);
   const isGenerating = useScheduleStore(state => state.isGenerating);
   
   const [selectedPreset, setSelectedPreset] = useState<PresetType>('balanced');
@@ -26,15 +47,12 @@ export const SolverConfigPanel: React.FC = () => {
     }
   );
   
-  // Update local state when solver config changes
+  // Update local state when genetic config changes, using deep comparison to prevent infinite loops
   useEffect(() => {
-    if (solverConfig) {
-      setWeights(solverConfig.weights);
-      if (solverConfig.genetic) {
-        setGenetic(solverConfig.genetic);
-      }
+    if (geneticConfig && !isEqual(genetic, geneticConfig)) {
+      setGenetic(geneticConfig);
     }
-  }, [solverConfig]);
+  }, [geneticConfig, genetic]); // genetic is now a dependency
   
   // Handle preset selection
   const handleSelectPreset = (preset: PresetType) => {
@@ -48,10 +66,11 @@ export const SolverConfigPanel: React.FC = () => {
     
     // If not custom preset, also update the store
     if (preset !== 'custom') {
-      setSolverConfig({
-        weights: {...presets[preset].weights},
-        genetic: presets[preset].genetic ? {...presets[preset].genetic} : undefined
-      });
+      // Update genetic config in the store
+      if (presets[preset].genetic) {
+        setGeneticConfig({...presets[preset].genetic});
+      }
+      // For weights, we'll need to add a setWeights method to the store later
     }
   };
   
@@ -65,11 +84,8 @@ export const SolverConfigPanel: React.FC = () => {
       setSelectedPreset('custom');
     }
     
-    // Update the store
-    setSolverConfig({
-      weights: newWeights,
-      genetic
-    });
+    // Currently weights aren't stored in the central state
+    // We'll add that capability in the future
   };
   
   // Handle genetic config changes
@@ -83,10 +99,7 @@ export const SolverConfigPanel: React.FC = () => {
     }
     
     // Update the store
-    setSolverConfig({
-      weights,
-      genetic: newGenetic
-    });
+    setGeneticConfig(changes);
   };
   
   return (
