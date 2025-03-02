@@ -222,7 +222,7 @@ The planning phase involves developing specific, actionable plans for improvemen
 ### 3.6 MVP Roadmap [M]
 
 - **Task ID**: P-06
-- **Status**: [ ]
+- **Status**: [✓]
 - **Dependencies**: A-07
 - **Description**: Create detailed roadmap to MVP completion
 - **Steps**:
@@ -230,7 +230,7 @@ The planning phase involves developing specific, actionable plans for improvemen
   2. Create timeline with milestones
   3. Define completion criteria
   4. Identify critical path and dependencies
-- **Output**: MVP roadmap document
+- **Output**: [MVP roadmap document](/memory-bank/review/mvp_roadmap.md)
 
 ---
 
