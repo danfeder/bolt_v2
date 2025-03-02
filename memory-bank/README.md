@@ -25,6 +25,7 @@ Technical documentation that describes the system architecture and components:
 | [projectbrief.md](projectbrief.md) | High-level project overview and goals |
 | [schedulingRequirements.md](schedulingRequirements.md) | Detailed requirements for the scheduling system |
 | [systemPatterns.md](systemPatterns.md) | Design patterns and architectural decisions |
+| [ga_experiment_framework.md](ga_experiment_framework.md) | Reference for the genetic algorithm experiment framework |
 
 ### 📊 Implementation Details
 
