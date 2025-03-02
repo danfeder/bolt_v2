@@ -1,5 +1,7 @@
 """API routes for visualization and dashboard."""
 from typing import Dict, List, Any, Optional
+import traceback
+import logging
 from fastapi import APIRouter, HTTPException, Body, Query, Depends
 from pydantic import ValidationError
 
@@ -15,6 +17,9 @@ from .models import (
     ScheduleComparisonResult,
     ScheduleQualityMetrics
 )
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter(
@@ -59,24 +64,67 @@ async def analyze_schedule(
         # Choose solver based on type
         solver = stable_solver if solver_type == "stable" else dev_solver
         
-        # Create schedule
-        schedule = solver.solve(request)
+        # Debugging: Print request details
+        logger.info(f"Analyzing schedule with {len(request.classes)} classes from {request.startDate} to {request.endDate}")
         
-        # Create dashboard data
-        dashboard_data = create_dashboard_data(
-            schedule=schedule,
-            classes=request.classes,
-        )
-        
-        # Store in history
-        schedule_history[dashboard_data.schedule_id] = {
-            "schedule": schedule,
-            "request": request,
-            "dashboard": dashboard_data
-        }
-        
-        return dashboard_data
-        
+        schedule = None
+        try:
+            # Create schedule
+            logger.info("About to call solver.solve()")
+            schedule = solver.solve(request)
+            logger.info("Solver.solve() completed successfully")
+            
+            # Debugging: Print schedule metadata
+            if hasattr(schedule, 'metadata') and schedule.metadata:
+                logger.info(f"Schedule metadata: {schedule.metadata}")
+                metadata_info = str(schedule.metadata)
+            else:
+                logger.info("No schedule metadata available")
+                metadata_info = "None"
+            
+            if not schedule:
+                logger.error("Solver returned None for schedule")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Solver failed to generate a schedule"
+                )
+            
+            if not hasattr(schedule, 'assignments') or not schedule.assignments:
+                logger.error("Schedule has no assignments")
+                logger.error(f"Schedule: {schedule}")
+                logger.error(f"Metadata: {metadata_info}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Solver generated a schedule with no assignments"
+                )
+            
+            # Create dashboard data
+            logger.info("About to create dashboard data")
+            dashboard_data = create_dashboard_data(
+                schedule=schedule,
+                classes=request.classes,
+            )
+            logger.info("Dashboard data created successfully")
+            
+            # Store in history
+            schedule_history[dashboard_data.schedule_id] = {
+                "schedule": schedule,
+                "request": request,
+                "dashboard": dashboard_data
+            }
+            
+            return dashboard_data
+                
+        except Exception as e:
+            logger.error(f"Error solving schedule: {str(e)}")
+            logger.error(f"Schedule: {schedule}")
+            logger.error(f"Request: {request}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error solving schedule: {str(e)}"
+            )
+    
     except ValidationError as e:
         raise HTTPException(
             status_code=422,
@@ -86,6 +134,16 @@ async def analyze_schedule(
             }
         )
     except Exception as e:
+        # Print metadata for debugging
+        import inspect
+        metadata_info = "None"
+        if 'schedule' in locals() and hasattr(schedule, 'metadata'):
+            metadata_info = str(vars(schedule.metadata))
+        
+        print(f"DEBUG - Error in analyze_schedule: {str(e)}")
+        print(f"DEBUG - Metadata: {metadata_info}")
+        print(f"DEBUG - Exception location: {inspect.trace()[-1][1:3]}")
+        
         raise HTTPException(
             status_code=500,
             detail={"message": f"Analysis error: {str(e)}"}

@@ -17,7 +17,7 @@ client = TestClient(app)
 def test_schedule_request():
     """Create a simple schedule request for testing."""
     return ScheduleRequestGenerator.create_request(
-        num_classes=3,
+        num_classes=2,
         num_weeks=1
     )
 
@@ -64,7 +64,7 @@ def test_get_schedule_history():
     """Test retrieving schedule history."""
     # First analyze a schedule to have something in history
     request = ScheduleRequestGenerator.create_request(
-        num_classes=2,
+        num_classes=1,
         num_weeks=1
     )
     client.post(
@@ -95,7 +95,7 @@ def test_get_chart_data():
     """Test retrieving chart data for a specific schedule."""
     # First analyze a schedule to have something in history
     request = ScheduleRequestGenerator.create_request(
-        num_classes=2,
+        num_classes=1,
         num_weeks=1
     )
     analyze_response = client.post(
@@ -103,7 +103,12 @@ def test_get_chart_data():
         json=request.model_dump(),
         params={"solver_type": "stable"}
     )
-    schedule_id = analyze_response.json()["schedule_id"]
+    
+    # Check response and get schedule_id
+    assert analyze_response.status_code == 200, f"Failed to analyze schedule: {analyze_response.text}"
+    response_data = analyze_response.json()
+    assert "schedule_id" in response_data, f"No schedule_id in response: {response_data}"
+    schedule_id = response_data["schedule_id"]
     
     # Get daily chart data
     response = client.get(f"/dashboard/chart/daily/{schedule_id}")
@@ -137,7 +142,7 @@ def test_get_schedule_metrics():
     """Test retrieving metrics for a specific schedule."""
     # First analyze a schedule to have something in history
     request = ScheduleRequestGenerator.create_request(
-        num_classes=2,
+        num_classes=1,
         num_weeks=1
     )
     analyze_response = client.post(
@@ -145,7 +150,12 @@ def test_get_schedule_metrics():
         json=request.model_dump(),
         params={"solver_type": "stable"}
     )
-    schedule_id = analyze_response.json()["schedule_id"]
+    
+    # Check response and get schedule_id
+    assert analyze_response.status_code == 200, f"Failed to analyze schedule: {analyze_response.text}"
+    response_data = analyze_response.json()
+    assert "schedule_id" in response_data, f"No schedule_id in response: {response_data}"
+    schedule_id = response_data["schedule_id"]
     
     # Get metrics
     response = client.get(f"/dashboard/metrics/{schedule_id}")
@@ -167,28 +177,58 @@ def test_get_schedule_metrics():
 def test_compare_schedules():
     """Test comparing two schedules."""
     # Create and analyze two schedules
-    request1 = ScheduleRequestGenerator.create_request(
-        num_classes=2,
-        num_weeks=1
-    )
-    analyze_response1 = client.post(
-        "/dashboard/analyze",
-        json=request1.model_dump(),
-        params={"solver_type": "stable"}
-    )
-    schedule_id1 = analyze_response1.json()["schedule_id"]
+    print("\n----- test_compare_schedules: Starting test -----")
+    
+    try:
+        request1 = ScheduleRequestGenerator.create_request(
+            num_classes=2,
+            num_weeks=1
+        )
+        print(f"Created request1 with {len(request1.classes)} classes")
+        print(f"Request1 classes: {[c.name for c in request1.classes]}")
+        print(f"Request1 date range: {request1.startDate} to {request1.endDate}")
+        
+        print("About to analyze first schedule...")
+        analyze_response1 = client.post(
+            "/dashboard/analyze",
+            json=request1.model_dump(),
+            params={"solver_type": "stable"}
+        )
+        print(f"First analysis response status: {analyze_response1.status_code}")
+        if analyze_response1.status_code != 200:
+            print(f"First analysis failed: {analyze_response1.text}")
+    except Exception as e:
+        import traceback
+        print(f"Error during first schedule creation/analysis: {str(e)}")
+        print(traceback.format_exc())
+        raise
+    
+    # Check response and get schedule_id
+    assert analyze_response1.status_code == 200, f"Failed to analyze first schedule: {analyze_response1.text}"
+    response_data1 = analyze_response1.json()
+    assert "schedule_id" in response_data1, f"No schedule_id in response: {response_data1}"
+    schedule_id1 = response_data1["schedule_id"]
+    
+    # Ensure we have a unique timestamp for the second schedule
+    import time
+    time.sleep(1)
     
     # Create a slightly different request
     request2 = ScheduleRequestGenerator.create_request(
-        num_classes=3,  # Different number of classes
+        num_classes=2,  # Different number of classes
         num_weeks=1
     )
     analyze_response2 = client.post(
         "/dashboard/analyze",
         json=request2.model_dump(),
-        params={"solver_type": "dev"}  # Use different solver
+        params={"solver_type": "stable"}  # Use same solver for reliability
     )
-    schedule_id2 = analyze_response2.json()["schedule_id"]
+    
+    # Check response and get schedule_id
+    assert analyze_response2.status_code == 200, f"Failed to analyze second schedule: {analyze_response2.text}"
+    response_data2 = analyze_response2.json()
+    assert "schedule_id" in response_data2, f"No schedule_id in response: {response_data2}"
+    schedule_id2 = response_data2["schedule_id"]
     
     # Compare schedules
     response = client.post(

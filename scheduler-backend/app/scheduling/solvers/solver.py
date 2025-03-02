@@ -4,6 +4,10 @@ import traceback
 import os
 from dateutil import parser
 import logging
+import time
+
+# Set up logger
+logger = logging.getLogger(__name__)
 
 from ..core import SchedulerContext, ConstraintManager, SolverConfig
 from . import config
@@ -17,7 +21,7 @@ from .config import (
 from ..objectives.distribution import DistributionObjective
 from ..objectives.grade_grouping import GradeGroupingObjective
 from .base import BaseSolver
-from ...models import ScheduleRequest, ScheduleResponse, WeightConfig
+from ...models import ScheduleRequest, ScheduleResponse, WeightConfig, ScheduleMetadata
 from .genetic.optimizer import GeneticOptimizer
 from .genetic.meta_optimizer import MetaOptimizer
 from ..constraints.relaxation import (
@@ -149,10 +153,10 @@ class UnifiedSolver(BaseSolver):
         return {
             "status": "success",
             "metrics": {
-                "duration": self._last_run_metadata.duration,
+                "duration": self._last_run_metadata.duration_ms,
                 "score": self._last_run_metadata.score,
                 "solutions_found": self._last_run_metadata.solutions_found,
-                "optimization_gap": self._last_run_metadata.optimization_gap,
+                "optimization_gap": self._last_run_metadata.gap,
                 "distribution": self._last_run_metadata.distribution.dict() if self._last_run_metadata.distribution else None
             }
         }
@@ -281,25 +285,36 @@ class UnifiedSolver(BaseSolver):
               tune_weights: bool = False,
               with_relaxation: bool = False) -> ScheduleResponse:
         """
-        Solve the scheduling problem.
+        Main solve method to generate a schedule.
         
         Args:
-            request: Schedule request to solve (uses self.request if None)
+            request: The schedule request containing classes and constraints
             time_limit_seconds: Time limit for solver
-            tune_weights: Whether to tune weights before solving
-            with_relaxation: Whether to attempt constraint relaxation if
-                            a solution is not found
-            
+            tune_weights: Whether to tune weights automatically
+            with_relaxation: Whether to attempt constraint relaxation if initial solve fails
+        
         Returns:
-            Schedule response with assignments
+            ScheduleResponse with assignments and metadata
         """
         # Use provided request or stored request
         req = request if request is not None else self.request
-        if not req:
+        if req is None:
+            logger.error("No schedule request provided and no stored request available")
             raise ValueError("Schedule request is required")
-            
-        # Import config at method level
-        from . import config as config_module
+        
+        # Validate the request
+        if not req.classes or len(req.classes) == 0:
+            logger.warning("Empty schedule request received - no classes to schedule")
+            return ScheduleResponse(
+                assignments=[],
+                metadata=ScheduleMetadata(
+                    success=False,
+                    message="No classes to schedule",
+                    duration=0,
+                    score=0,
+                    status="EMPTY_REQUEST"
+                )
+            )
         
         # Set time limit
         time_limit = time_limit_seconds if time_limit_seconds is not None else config_module.SOLVER_TIME_LIMIT_SECONDS
@@ -309,10 +324,63 @@ class UnifiedSolver(BaseSolver):
         
         # Tune weights if requested
         if tune_weights and config_module.ENABLE_WEIGHT_TUNING:
-            self.tune_weights(req)
-            
+            try:
+                self.tune_weights(req)
+            except Exception as e:
+                logger.error(f"Weight tuning failed: {str(e)}")
+                logger.warning("Continuing with default weights")
+                # Continue with default weights rather than failing
+        
         # Create schedule
-        response = self.create_schedule(req, time_limit)
+        try:
+            start_time = time.time()
+            response = self.create_schedule(req, time_limit)
+            duration = time.time() - start_time
+            
+            # Log success details
+            assignment_count = len(response.assignments) if hasattr(response, 'assignments') and response.assignments else 0
+            logger.info(f"Schedule created successfully with {assignment_count} assignments in {duration:.2f} seconds")
+            
+            # If response has no metadata, add basic metadata
+            if not hasattr(response, 'metadata') or response.metadata is None:
+                response.metadata = ScheduleMetadata(
+                    success=True,
+                    message="Schedule created successfully",
+                    duration=duration,
+                    score=0,
+                    status="SUCCESS"
+                )
+            
+        except TimeoutError as e:
+            # Handle timeout specifically
+            logger.warning(f"Solver timeout after {time_limit} seconds: {str(e)}")
+            return ScheduleResponse(
+                assignments=[],
+                metadata=ScheduleMetadata(
+                    success=False,
+                    message=f"Solver timeout after {time_limit} seconds. Try simplifying the problem or increasing the time limit.",
+                    duration=time_limit,
+                    score=0,
+                    status="TIMEOUT"
+                )
+            )
+        except Exception as e:
+            logger.error(f"Error creating schedule: {str(e)}")
+            logger.error(f"Request details: Classes={len(req.classes)}, Date range={req.startDate} to {req.endDate}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Return a proper error response instead of raising
+            return ScheduleResponse(
+                assignments=[],
+                metadata=ScheduleMetadata(
+                    success=False,
+                    message=f"Schedule creation failed: {str(e)}",
+                    duration=0,
+                    score=0,
+                    status="ERROR"
+                )
+            )
         
         # If no solution found and relaxation is enabled, try with relaxation
         if with_relaxation and self.enable_relaxation and (
@@ -320,34 +388,43 @@ class UnifiedSolver(BaseSolver):
         ):
             logger.info("No solution found, attempting with constraint relaxation")
             
-            # Try with progressively increasing relaxation levels
-            for level in [
-                RelaxationLevel.MINIMAL,
-                RelaxationLevel.MODERATE,
-                RelaxationLevel.SIGNIFICANT,
-                RelaxationLevel.MAXIMUM
-            ]:
-                logger.info(f"Trying relaxation level: {level.name}")
-                self.relax_constraints(level)
-                
-                # Try to create schedule with relaxed constraints
-                response = self.create_schedule(req, time_limit)
-                
-                # If we found a solution, include relaxation info and return
-                if response.assignments and len(response.assignments) > 0:
-                    # Add relaxation info to metadata
-                    if hasattr(response, 'metadata') and response.metadata:
-                        response.metadata.relaxation_level = level.name
-                        response.metadata.relaxation_status = self.get_relaxation_status()
+            # Try with progressive relaxation
+            for level in RelaxationLevel:
+                if level == RelaxationLevel.NONE:
+                    continue
                     
-                    logger.info(
-                        f"Found solution with relaxation level {level.name}, "
-                        f"assignments: {len(response.assignments)}"
-                    )
-                    return response
+                logger.info(f"Trying relaxation level: {level.name}")
+                try:
+                    # Apply relaxation and resolve
+                    relaxed = self.relax_constraints(level)
+                    relaxed_response = self.create_schedule(req, time_limit)
+                    
+                    # If we have assignments, use this solution
+                    if relaxed_response.assignments and len(relaxed_response.assignments) > 0:
+                        logger.info(
+                            f"Found solution with relaxation level {level.name}. "
+                            f"Applied {len(relaxed)} relaxations."
+                        )
+                        # Update metadata to include relaxation information
+                        relaxed_response.metadata.relaxation_level = level.name
+                        relaxed_response.metadata.relaxation_count = len(relaxed)
+                        return relaxed_response
+                except Exception as e:
+                    logger.error(f"Error during constraint relaxation (level {level.name}): {str(e)}")
+                    # Continue trying next level instead of failing
             
-            # If still no solution, log and return the empty response
+            # If we got here, no relaxation worked
             logger.warning("Could not find solution even with maximum relaxation")
+            return ScheduleResponse(
+                assignments=[],
+                metadata=ScheduleMetadata(
+                    success=False,
+                    message="Failed to find a solution even with constraint relaxation",
+                    duration=0,
+                    score=0,
+                    status="NO_SOLUTION"
+                )
+            )
         
         return response
     
@@ -540,20 +617,20 @@ class UnifiedSolver(BaseSolver):
             },
             "metric_differences": {
                 "score": new_score - stable_score,
-                "duration": new_response.metadata.duration - stable_response.metadata.duration,
+                "duration": new_response.metadata.duration_ms - stable_response.metadata.duration_ms,
                 "distribution": {
                     "score_difference": new_score - stable_score,
                     "weekly_variance_difference": (
-                        (new_response.metadata.distribution.weekly["variance"] if new_response.metadata.distribution else 0) -
-                        (stable_response.metadata.distribution.weekly["variance"] if stable_response.metadata.distribution else 0)
+                        (new_response.metadata.distribution.weekly.variance if new_response.metadata.distribution else 0) -
+                        (stable_response.metadata.distribution.weekly.variance if stable_response.metadata.distribution else 0)
                     ),
                     "average_period_spread_difference": (
                         sum(
-                            new_response.metadata.distribution.daily[date]["periodSpread"] if new_response.metadata.distribution else 0
+                            new_response.metadata.distribution.daily[date].periodSpread if new_response.metadata.distribution else 0
                             for date in new_response.metadata.distribution.daily
                         ) / len(new_response.metadata.distribution.daily) -
                         sum(
-                            stable_response.metadata.distribution.daily[date]["periodSpread"] if stable_response.metadata.distribution else 0
+                            stable_response.metadata.distribution.daily[date].periodSpread if stable_response.metadata.distribution else 0
                             for date in stable_response.metadata.distribution.daily
                         ) / len(stable_response.metadata.distribution.daily)
                         if stable_response.metadata.distribution and new_response.metadata.distribution

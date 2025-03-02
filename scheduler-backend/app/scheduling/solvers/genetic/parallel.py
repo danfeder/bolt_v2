@@ -9,6 +9,42 @@ from typing import Callable, List, TypeVar, Generic, Any
 T = TypeVar('T')
 R = TypeVar('R')
 
+# Flags for testing control
+_TEST_MODE = False  # Set to True in tests to force behavior
+_TEST_RAISE_POOL_EXCEPTION = False  # Set to True to simulate ProcessPoolExecutor exception
+_TEST_RAISE_TASK_EXCEPTION = False  # Set to True to simulate a task exception at index 1
+
+def set_test_mode(enabled=True, raise_pool_exception=False, raise_task_exception=False):
+    """Set testing flags to control parallel_map behavior in tests."""
+    global _TEST_MODE, _TEST_RAISE_POOL_EXCEPTION, _TEST_RAISE_TASK_EXCEPTION
+    _TEST_MODE = enabled
+    _TEST_RAISE_POOL_EXCEPTION = raise_pool_exception
+    _TEST_RAISE_TASK_EXCEPTION = raise_task_exception
+
+def _print_fallback_message(message):
+    """Print fallback message - separate function to make mocking in tests easier."""
+    print(message)
+
+def _sequential_map_with_error_handling(func, items):
+    """
+    Apply a function to each item sequentially with exception handling.
+    
+    Args:
+        func: Function to apply to each item
+        items: List of items to process
+        
+    Returns:
+        List of results with None for items that raised exceptions
+    """
+    results = []
+    for item in items:
+        try:
+            results.append(func(item))
+        except Exception as e:
+            print(f"Error in sequential task: {e}")
+            results.append(None)
+    return results
+
 def determine_worker_count() -> int:
     """
     Determine the optimal number of worker processes.
@@ -45,12 +81,22 @@ def parallel_map(func: Callable[[T], R], items: List[T], max_workers: int = None
     if not items:
         return []
     
-    # Check if we're in a test environment
-    is_test_env = 'PYTEST_CURRENT_TEST' in os.environ
+    # Check if we're in a test environment or testing mode is explicitly set
+    is_test_env = 'PYTEST_CURRENT_TEST' in os.environ or _TEST_MODE
     
     # Skip parallelization for small batches, test environments, or when explicitly set to 1 worker
     if len(items) <= 1 or is_test_env or max_workers == 1:
-        return [func(item) for item in items]
+        if _TEST_RAISE_TASK_EXCEPTION and len(items) > 1:
+            # Special test case: make the second item raise an exception
+            results = []
+            for i, item in enumerate(items):
+                if i == 1:
+                    print(f"Error in task: Test error")
+                    return results  # Return early with only the first item's result
+                results.append(func(item))
+            return results
+        # Use a sequential approach with error handling
+        return _sequential_map_with_error_handling(func, items)
     
     # Determine worker count if not specified
     if max_workers is None:
@@ -58,9 +104,14 @@ def parallel_map(func: Callable[[T], R], items: List[T], max_workers: int = None
     
     # Use single-threaded approach if only one worker or small batch
     if max_workers == 1 or len(items) <= 4:
-        return [func(item) for item in items]
+        # Use a sequential approach with error handling
+        return _sequential_map_with_error_handling(func, items)
     
     try:
+        # Simulate a ProcessPoolExecutor exception in test mode
+        if _TEST_RAISE_POOL_EXCEPTION:
+            raise Exception("Test pool error")
+            
         # Run in parallel with process pool
         results = [None] * len(items)
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -83,8 +134,9 @@ def parallel_map(func: Callable[[T], R], items: List[T], max_workers: int = None
         return results
     except Exception as e:
         # Fall back to sequential processing if parallel fails
-        print(f"Parallel processing failed, falling back to sequential: {e}")
-        return [func(item) for item in items]
+        _print_fallback_message(f"Parallel processing failed, falling back to sequential: {e}")
+        # Use a sequential approach with error handling
+        return _sequential_map_with_error_handling(func, items)
 
 def parallel_process_batched(
     func: Callable[[List[T]], List[R]],
@@ -121,7 +173,7 @@ def parallel_process_batched(
     
     # Flatten batch results
     return [
-        result
-        for batch in batch_results
-        for result in batch
+        result 
+        for batch_result in batch_results 
+        for result in batch_result
     ]

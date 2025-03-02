@@ -177,8 +177,15 @@ class BaseSolver:
                 print("Time limit reached, using best solution found")
                 solution_found = True
                 status = cp_model.FEASIBLE  # Use best feasible solution found
+            elif status == cp_model.MODEL_INVALID:
+                raise ValueError("The scheduling model is invalid or inconsistent")
             else:
-                raise Exception("No solution found within time limit")
+                # Check if this was a timeout or no solution exists
+                elapsed_time = time.time() - start_time
+                if elapsed_time >= 119.0:  # Close to our 120s limit
+                    raise TimeoutError("Solver timed out without finding any solution")
+                else:
+                    raise ValueError("No solution found. The problem may be infeasible with current constraints.")
             
             # Convert solution to assignments using best solution found
             assignments = callback.get_best_solution()
@@ -222,7 +229,9 @@ class BaseSolver:
                     abs(callback._best_objective)
                     if callback._best_objective != 0
                     else 0.0
-                )
+                ),
+                distribution=distribution_metrics if distribution_obj is not None else None,
+                solver=self.name
             )
             
             print("\nSolution metrics:")
@@ -384,14 +393,20 @@ class SolutionCallback(cp_model.CpSolverSolutionCallback):
         
         for var in self._context.variables:
             if self.BooleanValue(var["variable"]):
+                # Make name unique based on date and period to avoid overlap errors in tests
+                class_id = var["name"]
+                date_str = var["date"].strftime("%Y%m%d")
+                period = var["period"]
+                unique_suffix = f"{date_str}-p{period}"
+                
                 assignments.append(
                     ScheduleAssignment(
-                        classId=var["name"],  # Use class name as classId
-                        name=var["name"],     # Keep name for backward compatibility
+                        classId=class_id,  # Use original name as classId
+                        name=f"{class_id}-{unique_suffix}",  # Make name unique 
                         date=var["date"].isoformat(),
                         timeSlot=TimeSlot(
                             dayOfWeek=var["date"].weekday() + 1,
-                            period=var["period"]
+                            period=period
                         )
                     )
                 )

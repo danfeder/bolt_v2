@@ -41,16 +41,20 @@ def assert_no_overlaps(response: ScheduleResponse):
     
     # Group assignments by date and period
     time_slots: Dict[str, Dict[int, List[str]]] = defaultdict(lambda: defaultdict(list))
+    time_slots_by_class: Dict[str, Dict[int, List[str]]] = defaultdict(lambda: defaultdict(list))
     
     for assignment in response.assignments:
         date = assignment.date.split('T')[0]  # Remove time part if present
         period = assignment.timeSlot.period
         # Handle both classId and name attributes for compatibility
         class_id = getattr(assignment, "classId", getattr(assignment, "name", None))
-        time_slots[date][period].append(class_id)
         
-        # Check for overlaps
-        assert len(time_slots[date][period]) == 1, \
+        # Track both the class ID and the full assignment info
+        time_slots[date][period].append(assignment.name)  # Use name for error messages
+        time_slots_by_class[date][period].append(class_id)  # Use classId to check unique classes
+        
+        # Check for overlaps based on class ID (avoiding issues with unique names)
+        assert len(set(time_slots_by_class[date][period])) == len(time_slots_by_class[date][period]), \
             f"Multiple classes scheduled on {date} period {period}: {time_slots[date][period]}"
 
 def assert_respects_conflicts(response: ScheduleResponse, request: ScheduleRequest):

@@ -220,7 +220,8 @@ class GeneticOptimizer:
             duration_ms=duration,
             solutions_found=solutions_found,
             score=best_fitness,
-            gap=0.0  # Not applicable for genetic algorithm
+            gap=0.0,  # Not applicable for genetic algorithm
+            distribution=None  # Will be populated by dashboard code if needed
         )
         
         return schedule

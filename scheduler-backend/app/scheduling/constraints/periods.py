@@ -35,13 +35,25 @@ class RequiredPeriodsConstraint(BaseConstraint):
             if hasattr(class_obj, "weeklySchedule") and class_obj.weeklySchedule.requiredPeriods:
                 print(f"Found {len(class_obj.weeklySchedule.requiredPeriods)} required periods for {class_obj.name}")
                 for required in class_obj.weeklySchedule.requiredPeriods:
-                    print(f"Required period: day={required.dayOfWeek}, period={required.period}")
-                    # Find variables for this weekday and period
-                    matching_vars = [
-                        var for var in class_vars
-                        if (var["date"].weekday() + 1 == required.dayOfWeek  # Convert 0-6 to 1-7
-                            and var["period"] == required.period)
-                    ]
+                    if hasattr(required, "dayOfWeek"):
+                        # Handle TimeSlot-based required periods with dayOfWeek
+                        print(f"Required period: day={required.dayOfWeek}, period={required.period}")
+                        # Find variables for this weekday and period
+                        matching_vars = [
+                            var for var in class_vars
+                            if (var["date"].weekday() + 1 == required.dayOfWeek  # Convert 0-6 to 1-7
+                                and var["period"] == required.period)
+                        ]
+                    elif hasattr(required, "date"):
+                        # Handle RequiredPeriod-based periods with date
+                        req_date = datetime.fromisoformat(required.date) if isinstance(required.date, str) else required.date
+                        print(f"Required period: date={req_date}, period={required.period}")
+                        # Find variables for this date and period
+                        matching_vars = [
+                            var for var in class_vars
+                            if (var["date"].date() == req_date.date() if hasattr(req_date, "date") else var["date"].date() == req_date
+                                and var["period"] == required.period)
+                        ]
                     
                     if self.enabled:
                         # Force assignment to required period
@@ -78,36 +90,77 @@ class RequiredPeriodsConstraint(BaseConstraint):
             # Check each required period
             for required in class_obj.weeklySchedule.requiredPeriods:
                 matching = []
-                for a in class_assignments:
-                    if isinstance(a, dict):
-                        # Handle dict format
-                        date_str = a["date"]
-                        if isinstance(date_str, datetime):
-                            weekday = date_str.weekday() + 1
-                        else:
-                            weekday = datetime.fromisoformat(date_str).weekday() + 1
-                        
-                        period = a["timeSlot"].period if hasattr(a["timeSlot"], "period") else a["timeSlot"]["period"]
-                    else:
-                        # Handle object format
-                        weekday = datetime.fromisoformat(a.date).weekday() + 1
-                        period = a.timeSlot.period
+                
+                # Handle RequiredPeriod objects with date attribute
+                if hasattr(required, "date"):
+                    required_date = datetime.fromisoformat(required.date) if isinstance(required.date, str) else required.date
+                    required_period = required.period
                     
-                    if weekday == required.dayOfWeek and period == required.period:
-                        matching.append(a)
+                    for a in class_assignments:
+                        if isinstance(a, dict):
+                            # Handle dict format
+                            date_str = a["date"]
+                            if isinstance(date_str, datetime):
+                                assignment_date = date_str
+                            else:
+                                assignment_date = datetime.fromisoformat(date_str)
+                            
+                            period = a["timeSlot"].period if hasattr(a["timeSlot"], "period") else a["timeSlot"]["period"]
+                        else:
+                            # Handle object format
+                            assignment_date = datetime.fromisoformat(a.date)
+                            period = a.timeSlot.period
+                        
+                        if (assignment_date.date() == required_date.date() if hasattr(required_date, "date") else 
+                            assignment_date.date() == required_date) and period == required_period:
+                            matching.append(a)
+                
+                # Handle TimeSlot objects with dayOfWeek attribute
+                elif hasattr(required, "dayOfWeek"):
+                    required_day = required.dayOfWeek
+                    required_period = required.period
+                    
+                    for a in class_assignments:
+                        if isinstance(a, dict):
+                            # Handle dict format
+                            date_str = a["date"]
+                            if isinstance(date_str, datetime):
+                                weekday = date_str.weekday() + 1
+                            else:
+                                weekday = datetime.fromisoformat(date_str).weekday() + 1
+                            
+                            period = a["timeSlot"].period if hasattr(a["timeSlot"], "period") else a["timeSlot"]["period"]
+                        else:
+                            # Handle object format
+                            weekday = datetime.fromisoformat(a.date).weekday() + 1
+                            period = a.timeSlot.period
+                        
+                        if weekday == required_day and period == required_period:
+                            matching.append(a)
 
                 if not matching:
-                    msg = (f"Class {class_obj.name} is missing required assignment "
-                          f"on day {required.dayOfWeek} period {required.period}")
+                    if hasattr(required, "dayOfWeek"):
+                        msg = (f"Class {class_obj.name} is missing required assignment "
+                              f"on day {required.dayOfWeek} period {required.period}")
+                    else:  # RequiredPeriod with date
+                        msg = (f"Class {class_obj.name} is missing required assignment "
+                              f"on date {required.date} period {required.period}")
                     print(f"Violation: {msg}")
+                    context_dict = {
+                        "name": class_obj.name,
+                        "period": required.period
+                    }
+                    
+                    # Add the appropriate date/day information based on the required period type
+                    if hasattr(required, "dayOfWeek"):
+                        context_dict["dayOfWeek"] = required.dayOfWeek
+                    else:  # RequiredPeriod with date
+                        context_dict["date"] = required.date
+                    
                     violations.append(ConstraintViolation(
                         message=msg,
                         severity="error",
-                        context={
-                            "name": class_obj.name,
-                            "dayOfWeek": required.dayOfWeek,
-                            "period": required.period
-                        }
+                        context=context_dict
                     ))
 
         print(f"Found {len(violations)} violations")
