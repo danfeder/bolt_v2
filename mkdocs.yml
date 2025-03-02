@@ -1,0 +1,106 @@
+site_name: Gym Class Rotation Scheduler
+site_description: Documentation for the Gym Class Rotation Scheduler project
+site_author: Development Team
+repo_url: https://github.com/example/bolt_v2
+repo_name: bolt_v2
+
+theme:
+  name: material
+  palette:
+    primary: indigo
+    accent: amber
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.expand
+    - navigation.indexes
+    - navigation.sections
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - admonition
+  - footnotes
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - attr_list
+  - def_list
+  - md_in_html
+
+plugins:
+  - search
+  - mermaid2
+  - autorefs:
+      link_titles: true
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+  - macros
+  - git-revision-date-localized:
+      type: datetime
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Overview: getting-started/index.md
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - Development Setup: getting-started/development-setup.md
+  - User Guide:
+    - Overview: user-guide/index.md
+    - Core Concepts: user-guide/core-concepts.md
+    - Data Formats: user-guide/data-formats.md
+    - Interface Overview: user-guide/interface-overview.md
+    - Creating Schedules: user-guide/creating-schedules.md
+    - Troubleshooting: user-guide/troubleshooting.md
+  - Architecture:
+    - Overview: architecture/index.md
+    - System Overview: architecture/system-overview.md
+    - Backend Architecture: architecture/backend-architecture.md
+    - Frontend Architecture: architecture/frontend-architecture.md
+    - API Design: architecture/api-design.md
+    - Data Models: architecture/data-models.md
+  - Developer Guide:
+    - Overview: developer-guide/index.md
+    - Contribution Guidelines: developer-guide/contribution-guidelines.md
+    - Coding Standards: developer-guide/coding-standards.md
+    - Testing Strategy: developer-guide/testing-strategy.md
+    - Performance Guidelines: developer-guide/performance-guidelines.md
+  - Component Reference:
+    - Overview: component-reference/index.md
+    - Backend:
+      - Overview: component-reference/backend/index.md
+      - Scheduler: component-reference/backend/scheduler.md
+      - Constraints: component-reference/backend/constraints.md
+      - Genetic Algorithm: component-reference/backend/genetic-algorithm.md
+      - API: component-reference/backend/api.md
+    - Frontend:
+      - Overview: component-reference/frontend/index.md
+      - React Components: component-reference/frontend/react-components.md
+      - State Management: component-reference/frontend/state-management.md
+      - Visualization: component-reference/frontend/visualization.md
+  - Tutorials:
+    - Overview: tutorials/index.md
+    - Basic Usage: tutorials/basic-usage.md
+    - Advanced: tutorials/advanced.md
+  - Project Management:
+    - Roadmap: project-management/roadmap.md
+    - Version History: project-management/version-history.md
+    - Meeting Notes: project-management/meeting-notes.md

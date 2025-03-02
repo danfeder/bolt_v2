@@ -58,5 +58,9 @@ dist/
 .cache/
 .parcel-cache/
 
+# MkDocs
+site/
+docs_build/
+
 # windsurf rules
 .windsurfrules
