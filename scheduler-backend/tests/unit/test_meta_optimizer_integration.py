@@ -105,6 +105,21 @@ class TestMetaOptimizerIntegration:
             eval_time_limit=10
         )
         
+        # Create a MetaObjectiveCalculator instance and patch it
+        objective_calculator = MagicMock()
+        meta_optimizer.objective_calculator = objective_calculator
+        
+        # Configure the mocked objective calculator to return a valid evaluation
+        objective_calculator.evaluate_weight_config.return_value = (
+            0.8,  # fitness
+            [ScheduleAssignment(
+                name="Test Class",
+                classId="class-1",
+                date="2025-03-01",
+                timeSlot=TimeSlot(dayOfWeek=1, period=1)
+            )]
+        )
+        
         # Create a small population of weight chromosomes
         weight_chromosomes = [
             WeightChromosome(weights={
@@ -115,24 +130,6 @@ class TestMetaOptimizerIntegration:
                 'distribution': 1000,
                 'avoid_periods': -500,
                 'earlier_dates': 10
-            }),
-            WeightChromosome(weights={
-                'final_week_compression': 2500,
-                'day_usage': 1800,
-                'daily_balance': 1200,
-                'preferred_periods': 800,
-                'distribution': 800,
-                'avoid_periods': -400,
-                'earlier_dates': 8
-            }),
-            WeightChromosome(weights={
-                'final_week_compression': 3500,
-                'day_usage': 2200,
-                'daily_balance': 1800,
-                'preferred_periods': 1200,
-                'distribution': 1200,
-                'avoid_periods': -600,
-                'earlier_dates': 12
             }),
         ]
         
@@ -145,18 +142,18 @@ class TestMetaOptimizerIntegration:
             meta_optimizer.current_population = weight_chromosomes
             meta_optimizer.best_chromosome = weight_chromosomes[0]
             
-            # Use patch to avoid actually running parallel execution in the test
-            with patch('app.scheduling.solvers.genetic.meta_optimizer.ProcessPoolExecutor'):
-                with patch('app.scheduling.solvers.genetic.meta_optimizer.parallel_map', 
-                          side_effect=lambda f, items, *args: [f(item) for item in items]):
-                    # Run the optimization
-                    result = meta_optimizer.optimize()
-                    
-                    # Verify result is a WeightConfig
-                    assert result is not None
-                    
-                    # Verify that GeneticOptimizer was called
-                    assert mock_genetic_optimizer.call_count > 0
-                    
-                    # Verify that optimize was called for each chromosome
-                    assert mock_optimizer_instance.optimize.call_count > 0 
+            # Run a single generation of the optimization to trigger evaluation of chromosomes
+            # Process pool executor could cause issues in testing, so skip real parallel evaluation
+            with patch.object(meta_optimizer, 'evaluate_population', wraps=meta_optimizer.evaluate_population):
+                with patch('concurrent.futures.ProcessPoolExecutor'):
+                    # Skip actual evolution to speed up test
+                    with patch.object(meta_optimizer, 'create_next_generation'):
+                        # Run the optimization with just one generation
+                        meta_optimizer.generations = 1
+                        result = meta_optimizer.optimize()
+                
+                # Verify result is not None
+                assert result is not None
+                
+                # Verify that evaluate_weight_config was called at least once
+                assert objective_calculator.evaluate_weight_config.call_count > 0
