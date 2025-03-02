@@ -91,6 +91,8 @@ class TestParallelMap:
     def test_parallel_map_test_environment(self):
         """Test parallel map in test environment."""
         # Should use sequential processing due to test environment
+        # Reset any previous test flags to ensure clean test state
+        set_test_mode(enabled=False, raise_pool_exception=False, raise_task_exception=False)
         result = parallel_map(lambda x: x * 2, [1, 2, 3, 4, 5])
         assert result == [2, 4, 6, 8, 10]
     
