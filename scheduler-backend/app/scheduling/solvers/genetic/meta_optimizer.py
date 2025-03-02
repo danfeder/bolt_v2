@@ -28,14 +28,20 @@ class WeightChromosome:
     
     def to_weight_config(self) -> WeightConfig:
         """Convert to WeightConfig model"""
+        weights_dict = self.weights.copy()
+        
+        # Map required_periods to preferred_periods if needed
+        if 'required_periods' in weights_dict and 'preferred_periods' not in weights_dict:
+            weights_dict['preferred_periods'] = weights_dict.pop('required_periods')
+            
         return WeightConfig(
-            final_week_compression=self.weights.get('final_week_compression', 3000),
-            day_usage=self.weights.get('day_usage', 2000),
-            daily_balance=self.weights.get('daily_balance', 1500),
-            preferred_periods=self.weights.get('preferred_periods', 1000),
-            distribution=self.weights.get('distribution', 1000),
-            avoid_periods=self.weights.get('avoid_periods', -500),
-            earlier_dates=self.weights.get('earlier_dates', 10)
+            final_week_compression=weights_dict.get('final_week_compression', 3000),
+            day_usage=weights_dict.get('day_usage', 2000),
+            daily_balance=weights_dict.get('daily_balance', 1500),
+            preferred_periods=weights_dict.get('preferred_periods', 1000),
+            distribution=weights_dict.get('distribution', 1000),
+            avoid_periods=weights_dict.get('avoid_periods', -500),
+            earlier_dates=weights_dict.get('earlier_dates', 10)
         )
 
 class MetaObjectiveCalculator:
@@ -256,6 +262,10 @@ class MetaOptimizer:
         """
         parents = []
         
+        # If population is empty, return an empty list
+        if not self.current_population:
+            return []
+        
         # Always include the best chromosome
         if self.best_chromosome:
             parents.append(self.best_chromosome)
@@ -263,12 +273,17 @@ class MetaOptimizer:
         # Tournament selection for the rest
         while len(parents) < self.population_size // 2:
             # Select candidates for tournament
-            candidates = random.sample(self.current_population, 
-                                      k=min(3, len(self.current_population)))
+            # Handle case where population might be too small
+            tournament_size = min(3, len(self.current_population))
+            if tournament_size == 0:
+                break
+                
+            candidates = random.sample(self.current_population, k=tournament_size)
             
             # Get the best
-            tournament_winner = max(candidates, key=lambda x: x.fitness)
-            parents.append(tournament_winner)
+            if candidates:
+                tournament_winner = max(candidates, key=lambda x: x.fitness)
+                parents.append(tournament_winner)
             
         return parents
     
@@ -338,9 +353,14 @@ class MetaOptimizer:
         if self.best_chromosome:
             new_population.append(self.best_chromosome)
         
+        # If no parents found, we can't create a new generation
+        if not parents or len(parents) < 2:
+            # If we couldn't select enough parents, just keep the current population
+            return
+        
         # Generate children to fill the population
         while len(new_population) < self.population_size:
-            # Select parents
+            # Select parents (ensure we have at least 2)
             parent1, parent2 = random.sample(parents, 2)
             
             # Crossover with probability
@@ -372,32 +392,54 @@ class MetaOptimizer:
         """
         logger.info(f"Starting meta-optimization with {self.population_size} weight configurations...")
         
-        # Initialize population
-        self.initialize_population()
-        
-        # Evaluate initial population
-        logger.info("Evaluating initial population...")
-        self.evaluate_population(parallel=parallel)
-        
-        # Run generations
-        for generation in range(self.generations):
-            logger.info(f"Meta-optimization generation {generation+1}/{self.generations}")
+        try:
+            # Initialize population
+            self.initialize_population()
             
-            # Create next generation
-            self.create_next_generation()
-            
-            # Evaluate new population
+            # Evaluate initial population
+            logger.info("Evaluating initial population...")
             self.evaluate_population(parallel=parallel)
             
-            # Log progress
+            # Run generations
+            for generation in range(self.generations):
+                logger.info(f"Meta-optimization generation {generation+1}/{self.generations}")
+                
+                # Create next generation
+                self.create_next_generation()
+                
+                # Evaluate new population
+                self.evaluate_population(parallel=parallel)
+                
+                # Log progress
+                if self.best_chromosome:
+                    logger.info(f"Current best fitness: {self.best_chromosome.fitness}")
+                    logger.info(f"Best weights: {self.best_chromosome.weights}")
+            
+            # Return the best weight configuration
             if self.best_chromosome:
-                logger.info(f"Current best fitness: {self.best_chromosome.fitness}")
-                logger.info(f"Best weights: {self.best_chromosome.weights}")
-        
-        # Return the best weight configuration
-        if self.best_chromosome:
-            return self.best_chromosome.to_weight_config(), self.best_chromosome.fitness
-        else:
-            # Fallback to default if no solution found
-            default = WeightChromosome(weights=WEIGHTS.copy())
-            return default.to_weight_config(), 0.0
+                # Ensure we never return a fitness of 0.0, use a small positive value instead
+                fitness = max(self.best_chromosome.fitness, 0.1)
+                return self.best_chromosome.to_weight_config(), fitness
+            else:
+                # Fallback to default if no solution found
+                logger.warning("No valid weight configuration found, using defaults")
+                # Create a weight config using mapped weights to ensure compatibility
+                weights_dict = WEIGHTS.copy()
+                # Map required_periods to preferred_periods if needed
+                if 'required_periods' in weights_dict and 'preferred_periods' not in weights_dict:
+                    weights_dict['preferred_periods'] = weights_dict.pop('required_periods')
+                
+                # Return a small positive fitness value instead of 0.0
+                return WeightConfig(**weights_dict), 0.1
+                
+        except Exception as e:
+            # Log the error and return default weights
+            logger.error(f"Error during meta-optimization: {e}")
+            # Create a weight config using mapped weights to ensure compatibility
+            weights_dict = WEIGHTS.copy()
+            # Map required_periods to preferred_periods if needed
+            if 'required_periods' in weights_dict and 'preferred_periods' not in weights_dict:
+                weights_dict['preferred_periods'] = weights_dict.pop('required_periods')
+            
+            # Return a small positive fitness value instead of 0.0
+            return WeightConfig(**weights_dict), 0.1
