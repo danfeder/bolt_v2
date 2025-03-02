@@ -80,6 +80,30 @@ Users can compare different schedules to see:
    - Ensured proper error handling and response formatting
    - All API tests passing with comprehensive coverage
 
+## Future Enhancements
+
+The dashboard functionality will be further enhanced as part of the comprehensive Frontend Enhancement & User Testing Plan developed on March 2, 2025. See [frontend_user_testing_plan.md](frontend_user_testing_plan.md) for full details on:
+
+1. **Dashboard Visual Enhancements**
+   - Improved interactive filtering capabilities
+   - Additional export options (PDF, CSV, iCal)
+   - Enhanced responsive layouts for all screen sizes
+   - Interactive tooltips and contextual help
+
+2. **User Experience Improvements**
+   - Simplified views for first-time users
+   - Guided tours for dashboard features
+   - Contextual help system
+   - User feedback collection mechanisms
+
+3. **Integration Enhancements**
+   - Tighter integration with solver configuration
+   - Performance metrics visualization
+   - Historical data tracking and trends
+   - Improved schedule comparison features
+
+These enhancements will build upon the solid foundation of the existing dashboard to provide an even more intuitive and powerful user experience.
+
 3. **Historical Tracking**
    - Add persistent storage for schedule history
    - Implement trending and improvement tracking over time

@@ -241,6 +241,67 @@ This document tracks improvements made to the testing framework for the scheduli
   - Improved test performance with better mocking
   - Eliminated flaky tests with more robust assertions
 
+## Performance Testing
+
+The performance testing framework is now complete as of March 2, 2025! This comprehensive framework provides tools to systematically benchmark and monitor the performance of the genetic algorithm under various conditions.
+
+### Key Components Implemented:
+
+1. **Performance Tracking Utilities (`perf_utils.py`)**
+   - PerformanceTracker class for measuring execution time, memory usage, and CPU utilization
+   - Performance test decorator for easy instrumentation
+   - Result analysis and visualization utilities
+
+2. **Comprehensive Benchmarks (`ga_benchmarks.py`)**
+   - Dataset scaling benchmarks to test performance across different problem sizes
+   - Parameter sensitivity analysis to measure the impact of different genetic algorithm parameters
+   - Parallel processing scaling tests to evaluate performance with different worker counts
+   - Automatic report generation with detailed metrics
+
+3. **Performance Regression Testing (`regression_tests.py`)**
+   - Baseline comparison tests to detect performance regressions
+   - Execution time constraints testing
+   - Solution quality validation
+   - Automated baseline management
+
+4. **Supporting Tools**
+   - Command-line benchmark runner (`run_ga_benchmarks.py`)
+   - Baseline management tool (`update_performance_baselines.py`)
+   - CI/CD workflow configuration for automated testing
+
+The framework enables systematic performance testing and continuous performance monitoring of the genetic algorithm solver, ensuring it maintains its efficiency as the codebase evolves.
+
+## User Testing
+
+In addition to the technical testing frameworks described above, we are implementing a comprehensive user testing framework to validate the application with real users. The complete plan is detailed in [frontend_user_testing_plan.md](frontend_user_testing_plan.md).
+
+### Key User Testing Components:
+
+1. **Test Group Formation**
+   - Identification of key user personas
+   - Recruitment of 5-8 participants for each persona
+   - Creation of user profiles with experience levels and needs
+
+2. **Testing Infrastructure**
+   - Dedicated testing environment
+   - Usage analytics (with user consent)
+   - Session recording capabilities
+   - Test datasets of varying complexity
+
+3. **Structured Test Cases**
+   - First-time schedule creation
+   - Schedule modification
+   - Constraint handling
+   - Dashboard analysis
+   - Schedule comparison
+
+4. **Analysis Framework**
+   - Quantitative metrics (time to completion, error rate, etc.)
+   - Qualitative feedback analysis
+   - Iterative improvement process
+
+This user testing framework complements our technical testing approach, ensuring that the application not only performs correctly from a technical perspective but also provides an excellent user experience.
+
 ## Remaining Work
 
 ### Priority Tasks
