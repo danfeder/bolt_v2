@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  scheduler-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: scheduler-backend:latest
+    container_name: scheduler-backend
+    ports:
+      - "3001:3001"
+    volumes:
+      # Mount app directory for development hot-reloading
+      - ./app:/app/app
+      # Mount tests directory for running tests in container
+      - ./tests:/app/tests
+    environment:
+      - PORT=3001
+      - ENVIRONMENT=development
+      - PYTHONPATH=/app
+    healthcheck:
+      test: curl -f http://localhost:3001/health || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 3001 --reload
+
+  # Add a service for running tests
+  scheduler-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: scheduler-backend:latest
+    container_name: scheduler-tests
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+      - ./data:/app/data
+      - ./pytest.ini:/app/pytest.ini
+    environment:
+      - ENVIRONMENT=test
+      - PYTHONPATH=/app
+    command: pytest -xvs tests/ --cov=app 

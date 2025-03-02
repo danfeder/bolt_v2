@@ -2,7 +2,9 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError, BaseModel, Field
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
+import logging
+import traceback
 
 from .models import ScheduleRequest, ScheduleResponse, WeightConfig
 from .scheduling.solvers.solver import UnifiedSolver
@@ -65,64 +67,173 @@ dev_solver = UnifiedSolver(use_genetic=True)      # Dev uses genetic algorithm
 # Include dashboard router
 app.include_router(dashboard_router)
 
+# Set up logger
+logger = logging.getLogger(__name__)
+
 @app.exception_handler(ValidationError)
 async def validation_exception_handler(request: Request, exc: ValidationError):
-    """Handle Pydantic validation errors gracefully"""
+    """
+    Handle validation errors, providing detailed information about which fields failed validation.
+    """
     errors = []
     for error in exc.errors():
-        # Extract meaningful validation information
-        loc = " -> ".join(str(l) for l in error["loc"])
-        msg = error["msg"]
-        ctx = error.get("ctx", {})
-        detailed_msg = f"{msg} (at {loc})"
-        if ctx:
-            detailed_msg += f": {ctx}"
+        error_location = error.get("loc", [])
+        field = error_location[-1] if error_location else "unknown"
+        
+        # Create a user-friendly message based on the error type
+        error_type = error.get("type", "")
+        error_msg = error.get("msg", "Unknown validation error")
+        
+        if "missing" in error_type:
+            user_message = f"'{field}' is required"
+        elif "type_error" in error_type:
+            user_message = f"'{field}' has an incorrect data type"
+        elif "value_error" in error_type:
+            if "not a valid datetime" in error_msg:
+                user_message = f"'{field}' must be a valid date in ISO format (YYYY-MM-DD)"
+            else:
+                user_message = f"'{field}' has an invalid value"
+        else:
+            user_message = error_msg
             
         errors.append({
-            "location": loc,
-            "message": detailed_msg,
-            "type": error["type"]
+            "field": field,
+            "message": user_message,
+            "detail": error_msg
         })
+    
+    logger.warning(f"Validation error: {errors}")
+    
     return JSONResponse(
         status_code=422,
         content={
-            "detail": "Validation failed",
+            "status": "error",
+            "message": "Validation error. Please check the provided data.",
             "errors": errors
-        }
+        },
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Handle HTTP exceptions with structured responses.
+    """
+    logger.warning(f"HTTP exception: {exc.status_code} - {exc.detail}")
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status": "error",
+            "message": str(exc.detail) if isinstance(exc.detail, str) else "An error occurred",
+            "errors": [exc.detail] if not isinstance(exc.detail, str) else []
+        },
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """
+    Handle unexpected exceptions with user-friendly messaging.
+    """
+    # Log the full exception with traceback for debugging
+    logger.error(f"Unexpected error: {str(exc)}")
+    logger.error(traceback.format_exc())
+    
+    # Return a generic error message to the user
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "message": "An unexpected error occurred. Our team has been notified.",
+            "detail": str(exc) if app.debug else None
+        },
     )
 
 @app.post(
     "/schedule/stable",
     response_model=ScheduleResponse,
     tags=["Schedule Generation"],
-    summary="Generate schedule (stable)",
-    description="Create a schedule using the stable (production) solver. Required periods are enforced."
+    summary="Generate stable schedule",
+    description="Create a stable schedule using the production solver."
 )
 async def create_schedule_stable(request: ScheduleRequest) -> ScheduleResponse:
+    """
+    Generate a schedule using the stable solver configuration.
+    
+    This endpoint uses the production solver with optimal parameters for reliable results.
+    """
     try:
+        logger.info(f"Creating stable schedule for {len(request.classes)} classes from {request.startDate} to {request.endDate}")
+        
         response = stable_solver.solve(request)
+        
+        # Check if we have a valid response with assignments
+        if not response.assignments or len(response.assignments) == 0:
+            if hasattr(response, 'metadata') and response.metadata and response.metadata.status == "TIMEOUT":
+                logger.warning("Solver timeout occurred")
+                raise HTTPException(
+                    status_code=408,  # Request Timeout
+                    detail={
+                        "message": "The solver timed out. Try reducing the complexity of your request.",
+                        "hint": "Consider fewer classes, a shorter date range, or simplifying constraints."
+                    }
+                )
+            elif hasattr(response, 'metadata') and response.metadata and response.metadata.status == "ERROR":
+                logger.error(f"Solver error: {response.metadata.message}")
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "message": "The schedule could not be generated due to an internal error.",
+                        "error": response.metadata.message
+                    }
+                )
+            else:
+                logger.warning("No feasible solution found")
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": "No feasible schedule could be created with the given constraints.",
+                        "hint": "Try relaxing some constraints or reducing conflicting requirements."
+                    }
+                )
+        
         # Convert assignment date strings to UTC ISO 8601 format
         from datetime import datetime
         from app.utils.date_utils import to_utc_isoformat
         for assignment in response.assignments:
             assignment.date = to_utc_isoformat(datetime.fromisoformat(assignment.date))
+            
+        # Log success
+        logger.info(f"Successfully created stable schedule with {len(response.assignments)} assignments")
+        
         # Validate response before returning
         return ScheduleResponse(
             assignments=response.assignments,
             metadata=response.metadata
         )
     except ValidationError as e:
+        # This will be handled by the validation_exception_handler
+        raise
+    except HTTPException:
+        # Re-raise HTTP exceptions to be handled by http_exception_handler
+        raise
+    except TimeoutError as e:
+        logger.warning(f"Solver timeout: {str(e)}")
         raise HTTPException(
-            status_code=422,
+            status_code=408,
             detail={
-                "message": "Invalid schedule request or response",
-                "errors": [{"msg": err["msg"], "loc": err["loc"]} for err in e.errors()]
+                "message": "The solver timed out while generating the schedule.",
+                "hint": "Try reducing the number of classes or simplifying constraints."
             }
         )
     except Exception as e:
+        logger.error(f"Unexpected error in create_schedule_stable: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail={"message": f"Scheduling error: {str(e)}"}
+            detail={
+                "message": "An unexpected error occurred while generating the schedule.",
+                "error": str(e)
+            }
         )
 
 @app.post(

@@ -177,8 +177,15 @@ class BaseSolver:
                 print("Time limit reached, using best solution found")
                 solution_found = True
                 status = cp_model.FEASIBLE  # Use best feasible solution found
+            elif status == cp_model.MODEL_INVALID:
+                raise ValueError("The scheduling model is invalid or inconsistent")
             else:
-                raise Exception("No solution found within time limit")
+                # Check if this was a timeout or no solution exists
+                elapsed_time = time.time() - start_time
+                if elapsed_time >= 119.0:  # Close to our 120s limit
+                    raise TimeoutError("Solver timed out without finding any solution")
+                else:
+                    raise ValueError("No solution found. The problem may be infeasible with current constraints.")
             
             # Convert solution to assignments using best solution found
             assignments = callback.get_best_solution()
