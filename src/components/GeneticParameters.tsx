@@ -1,6 +1,11 @@
 import React from 'react';
 import { GeneticSolverConfig } from '../types';
 
+/**
+ * @deprecated This component has been moved to src/components/solver/GeneticConfig.tsx
+ * Use the new component instead for better maintainability
+ */
+
 interface GeneticParametersProps {
   config: GeneticSolverConfig;
   onChange: (config: GeneticSolverConfig) => void;
