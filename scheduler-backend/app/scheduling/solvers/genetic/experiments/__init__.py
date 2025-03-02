@@ -18,7 +18,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ....models import ScheduleRequest, ScheduleResponse, WeightConfig
+from app.models import ScheduleRequest, ScheduleResponse, WeightConfig
 from ..optimizer import GeneticOptimizer
 from ..chromosome import ScheduleChromosome
 from ... import config

@@ -197,6 +197,7 @@ class ScheduleMetadata(BaseModel):
     gap: float
     distribution: Optional[Any] = None
     solver: Optional[str] = None
+    error: Optional[str] = None
     
     @property
     def duration(self) -> float:
@@ -211,7 +212,8 @@ class ScheduleMetadata(BaseModel):
                 "score": -857960000,
                 "gap": -1.13,
                 "distribution": None,
-                "solver": "cp-sat-unified"
+                "solver": "cp-sat-unified",
+                "error": None
             }
         }
     }
@@ -230,7 +232,8 @@ class ScheduleResponse(BaseModel):
                     "score": -857960000,
                     "gap": -1.13,
                     "distribution": None,
-                    "solver": "cp-sat-unified"
+                    "solver": "cp-sat-unified",
+                    "error": None
                 }
             }
         }
