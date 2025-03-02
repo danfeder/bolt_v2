@@ -25,6 +25,38 @@ dist-ssr
 
 # Test coverage
 coverage/
+scheduler-backend/coverage_report/
+scheduler-backend/htmlcov/
+reports/coverage/
+.coverage
+*.cover
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage.*
+htmlcov/
+pytest-report.xml
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+*.so
+*.dylib
+*.dll
+
+# Node.js / React build artifacts
+.cache/
+.parcel-cache/
 
 # windsurf rules
 .windsurfrules
