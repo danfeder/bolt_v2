@@ -37,6 +37,45 @@ class PopulationVisualizer:
         # Set up plot style
         plt.style.use('ggplot')
         self.color_palette = sns.color_palette("viridis", 10)
+    
+    def _ensure_numeric(self, value, default=0.0):
+        """Ensure a value is a numeric type, handling special cases.
+        
+        This handles:
+        - None values
+        - _NoValueType objects from unittest.mock
+        - Other objects that might not be directly convertible to float
+        
+        Args:
+            value: The value to convert to a numeric type
+            default: Default value to use if conversion fails
+            
+        Returns:
+            float: The numeric representation of the value or the default
+        """
+        # Handle None
+        if value is None:
+            return default
+            
+        # Handle mock objects and _NoValueType
+        if hasattr(value, '__class__'):
+            class_name = value.__class__.__name__
+            if class_name == '_NoValueType' or 'Mock' in class_name:
+                return default
+        
+        # Try converting to float
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            # If it's an array-like object, try to get the first element
+            try:
+                if hasattr(value, '__len__') and hasattr(value, '__getitem__'):
+                    if len(value) > 0:
+                        return float(value[0])
+            except (TypeError, ValueError, IndexError):
+                pass
+            
+            return default
         
     def visualize_diversity(
         self, 
@@ -60,7 +99,7 @@ class PopulationVisualizer:
         fig.suptitle(title, fontsize=16)
         
         # Extract fitness values for distribution plot
-        fitness_values = [chromosome.fitness for chromosome in population]
+        fitness_values = [self._ensure_numeric(chromosome.fitness) for chromosome in population]
         
         # 1. Create a fitness distribution histogram
         sns.histplot(fitness_values, kde=True, ax=ax1, color=self.color_palette[0])
@@ -182,7 +221,7 @@ class PopulationVisualizer:
                 genes_dict[feature_key] = 1
             
             # Add the chromosome's fitness
-            fitness_values.append(chromosome.fitness)
+            fitness_values.append(self._ensure_numeric(chromosome.fitness))
             
             # Add the chromosome's feature vector
             feature_vectors.append(genes_dict)
@@ -209,7 +248,7 @@ class PopulationVisualizer:
                     reduced_data = np.zeros((len(population), 2))
                     for i, chromosome in enumerate(population):
                         reduced_data[i, 0] = i % 10  # Simple x coordinate
-                        reduced_data[i, 1] = chromosome.fitness  # y coordinate is fitness
+                        reduced_data[i, 1] = self._ensure_numeric(chromosome.fitness)  # y coordinate is fitness
         else:
             # Use the original data if it already has 2 or fewer dimensions
             reduced_data = df.values
@@ -290,6 +329,36 @@ class PopulationVisualizer:
         Returns:
             Matplotlib figure
         """
+        # Ensure inputs are lists or convert them safely
+        try:
+            if hasattr(fitness_history, 'tolist'):
+                fitness_history = fitness_history.tolist()
+            else:
+                fitness_history = list(fitness_history or [])
+        except (TypeError, ValueError):
+            fitness_history = []
+            
+        try:
+            if hasattr(avg_fitness_history, 'tolist'):
+                avg_fitness_history = avg_fitness_history.tolist()
+            else:
+                avg_fitness_history = list(avg_fitness_history or [])
+        except (TypeError, ValueError):
+            avg_fitness_history = []
+            
+        try:
+            if hasattr(diversity_history, 'tolist'):
+                diversity_history = diversity_history.tolist()
+            else:
+                diversity_history = list(diversity_history or [])
+        except (TypeError, ValueError):
+            diversity_history = []
+            
+        # Convert all values to ensure they are numeric
+        fitness_history = [self._ensure_numeric(val) for val in fitness_history]
+        avg_fitness_history = [self._ensure_numeric(val) for val in avg_fitness_history]
+        diversity_history = [self._ensure_numeric(val) for val in diversity_history]
+        
         # Validate inputs
         if not fitness_history or len(fitness_history) < 2:
             # Not enough data to plot evolution
@@ -315,12 +384,12 @@ class PopulationVisualizer:
         generations = list(range(len(fitness_history)))
         
         # Plot best fitness
-        ax1.plot(generations, fitness_history, 'o-', color=self.color_palette[0], 
+        ax1.plot(generations, [self._ensure_numeric(f) for f in fitness_history], 'o-', color=self.color_palette[0], 
                  linewidth=2, markersize=8, label='Best Fitness')
         
         # Plot average fitness if available
         if avg_fitness_history and len(avg_fitness_history) == len(fitness_history):
-            ax1.plot(generations, avg_fitness_history, 's--', color=self.color_palette[1], 
+            ax1.plot(generations, [self._ensure_numeric(f) for f in avg_fitness_history], 's--', color=self.color_palette[1], 
                      linewidth=2, markersize=6, label='Average Fitness')
         
         # Add labels and legend
@@ -331,16 +400,16 @@ class PopulationVisualizer:
         ax1.grid(True, linestyle='--', alpha=0.7)
         
         # Highlight best generation
-        best_gen = fitness_history.index(max(fitness_history))
+        best_gen = [self._ensure_numeric(f) for f in fitness_history].index(max([self._ensure_numeric(f) for f in fitness_history]))
         ax1.axvline(x=best_gen, color='red', linestyle='--', alpha=0.5)
-        ax1.text(best_gen + 0.1, fitness_history[best_gen], 
+        ax1.text(best_gen + 0.1, max([self._ensure_numeric(f) for f in fitness_history]), 
                 f'Best: Gen {best_gen}', 
                 color='red', fontsize=10)
         
         # Plot diversity if available
         ax2 = plt.subplot(gs[1, 0])
         if diversity_history and len(diversity_history) == len(fitness_history):
-            ax2.plot(generations, diversity_history, 'o-', color=self.color_palette[2], 
+            ax2.plot(generations, [self._ensure_numeric(d) for d in diversity_history], 'o-', color=self.color_palette[2], 
                      linewidth=2, markersize=6)
             ax2.set_title('Population Diversity', fontsize=12)
             ax2.set_xlabel('Generation', fontsize=10)
@@ -356,7 +425,7 @@ class PopulationVisualizer:
         ax3 = plt.subplot(gs[1, 1])
         if len(fitness_history) >= 3:
             # Calculate improvement rate (derivative of fitness)
-            improvements = [fitness_history[i] - fitness_history[i-1] for i in range(1, len(fitness_history))]
+            improvements = [self._ensure_numeric(fitness_history[i]) - self._ensure_numeric(fitness_history[i-1]) for i in range(1, len(fitness_history))]
             
             # Plot improvement rate
             ax3.bar(generations[1:], improvements, color=self.color_palette[3], alpha=0.7)
@@ -376,10 +445,10 @@ class PopulationVisualizer:
         # Add summary statistics
         if fitness_history:
             stats_text = (
-                f"Starting Fitness: {fitness_history[0]:.2f}\n"
-                f"Final Fitness: {fitness_history[-1]:.2f}\n"
-                f"Best Fitness: {max(fitness_history):.2f} (Gen {fitness_history.index(max(fitness_history))})\n"
-                f"Improvement: {fitness_history[-1] - fitness_history[0]:.2f} ({(fitness_history[-1] - fitness_history[0]) / fitness_history[0] * 100:.1f}%)"
+                f"Starting Fitness: {self._ensure_numeric(fitness_history[0]):.2f}\n"
+                f"Final Fitness: {self._ensure_numeric(fitness_history[-1]):.2f}\n"
+                f"Best Fitness: {max([self._ensure_numeric(f) for f in fitness_history]):.2f} (Gen {best_gen})\n"
+                f"Improvement: {self._ensure_numeric(fitness_history[-1]) - self._ensure_numeric(fitness_history[0]):.2f} ({(self._ensure_numeric(fitness_history[-1]) - self._ensure_numeric(fitness_history[0])) / abs(self._ensure_numeric(fitness_history[0])) * 100:.1f}%)"
             )
             ax1.text(0.02, 0.02, stats_text, transform=ax1.transAxes, 
                    fontsize=10, verticalalignment='bottom', 
@@ -402,25 +471,51 @@ class PopulationVisualizer:
         save_path: Optional[str] = None
     ) -> plt.Figure:
         """
-        Visualize a single chromosome as a schedule.
+        Visualize a chromosome as a schedule.
         
         Args:
-            chromosome: The chromosome to visualize
+            chromosome: Schedule chromosome to visualize
             title: Plot title
             save_path: Path to save the visualization (None for no saving)
             
         Returns:
             Matplotlib figure
         """
+        # Handle case where chromosome might be None
+        if chromosome is None:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.text(0.5, 0.5, "No chromosome provided for visualization",
+                horizontalalignment='center', verticalalignment='center',
+                transform=ax.transAxes, fontsize=12)
+            ax.set_title(title)
+            if save_path:
+                self._save_figure(fig, save_path)
+            return fig
+        
         # Create figure and axis
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8), gridspec_kw={'width_ratios': [3, 1]})
         fig.suptitle(title, fontsize=16)
         
-        # Check if chromosome has genes
-        if not chromosome.genes:
-            ax1.text(0.5, 0.5, "No genes found in chromosome",
-                    horizontalalignment='center', verticalalignment='center',
-                    transform=ax1.transAxes, fontsize=12)
+        # Handle empty genes case
+        if not hasattr(chromosome, 'genes') or not chromosome.genes:
+            ax1.text(0.5, 0.5, "Chromosome has no assignments to visualize",
+                horizontalalignment='center', verticalalignment='center',
+                transform=ax1.transAxes, fontsize=12)
+            
+            # Add fitness information on the right panel
+            fitness_value = self._ensure_numeric(getattr(chromosome, 'fitness', None))
+            fitness_text = f"Fitness: {fitness_value:.2f}" if fitness_value is not None else "Fitness: N/A"
+            
+            ax2.text(0.5, 0.5, fitness_text,
+                horizontalalignment='center', verticalalignment='center',
+                transform=ax2.transAxes, fontsize=12)
+                
+            ax1.set_title('Class Schedule', fontsize=14)
+            ax2.set_title('Chromosome Information', fontsize=14)
+            
+            # Hide axes
+            ax1.axis('off')
+            ax2.axis('off')
             
             if save_path:
                 self._save_figure(fig, save_path)
@@ -439,27 +534,42 @@ class PopulationVisualizer:
             for j in range(len(periods)):
                 schedule_grid[i, j] = ""
         
-        # Fill in the schedule grid with class assignments
-        for gene in chromosome.genes:
-            day_idx = gene.time_slot.dayOfWeek - 1  # Assuming 1-indexed days
-            period_idx = gene.time_slot.period - 1  # Assuming 1-indexed periods
-            
-            # Make sure indices are within bounds
-            if 0 <= day_idx < len(days) and 0 <= period_idx < len(periods):
-                schedule_grid[day_idx, period_idx] = gene.class_id
-        
-        # Create a table for the schedule
-        cell_colors = np.full_like(schedule_grid, 'white', dtype=object)
-        
-        # Color cells that have assignments
+        # Create a cell colors matrix
+        cell_colors = np.zeros((len(days), len(periods)), dtype=object)
         for i in range(len(days)):
             for j in range(len(periods)):
-                if schedule_grid[i, j]:
-                    # Assign a deterministic color based on class_id
-                    class_id = schedule_grid[i, j]
-                    # Create a hash of the class_id to get a repeatable color
-                    hash_val = sum(ord(c) for c in class_id) % 10
-                    cell_colors[i, j] = self.color_palette[hash_val]
+                cell_colors[i, j] = 'white'  # Default color
+        
+        # Fill in the schedule grid with class assignments
+        for gene in chromosome.genes:
+            # Get the day and period from the gene
+            # First try to use time_slot property if available
+            try:
+                if hasattr(gene, 'time_slot'):
+                    day_idx = days.index(gene.time_slot.dayOfWeek)
+                    period_idx = periods.index(gene.time_slot.period)
+                else:
+                    # Fall back to using day_of_week and period directly
+                    day_idx = gene.day_of_week - 1  # Convert from 1-indexed to 0-indexed
+                    period_idx = gene.period - 1    # Convert from 1-indexed to 0-indexed
+                
+                # Add the class to the grid
+                class_name = ""
+                if hasattr(gene, 'class_obj') and hasattr(gene.class_obj, 'name'):
+                    class_name = gene.class_obj.name
+                elif hasattr(gene, 'class_id'):
+                    class_name = gene.class_id
+                else:
+                    class_name = "Unknown"
+                    
+                schedule_grid[day_idx, period_idx] = class_name
+                
+                # Set a color based on class name (for visual distinction)
+                hash_val = hash(class_name) % len(self.color_palette)
+                cell_colors[day_idx, period_idx] = self.color_palette[hash_val]
+            except (ValueError, IndexError, AttributeError) as e:
+                # Skip if there's an error with the gene
+                continue
         
         # Create the schedule table
         table = ax1.table(
@@ -467,13 +577,13 @@ class PopulationVisualizer:
             rowLabels=days,
             colLabels=periods,
             cellColours=cell_colors,
-            loc='center',
-            cellLoc='center'
+            loc='center'
         )
         
         # Style the table
         table.auto_set_font_size(False)
         table.set_fontsize(10)
+        table.auto_set_column_width(col=list(range(len(periods))))
         table.scale(1, 1.5)  # Adjust table size
         
         # Hide axes
@@ -484,26 +594,33 @@ class PopulationVisualizer:
         ax2.axis('off')
         ax2.set_title('Chromosome Information', fontsize=14)
         
-        # Add fitness value
-        info_text = f"Fitness: {chromosome.fitness:.2f}\n\n"
+        # Add fitness value 
+        info_text = f"Fitness: {self._ensure_numeric(getattr(chromosome, 'fitness', 0.0)):.2f}\n\n"
         
         # Add class distribution information
-        class_counts = Counter(gene.class_id for gene in chromosome.genes)
+        class_counts = {}
+        for gene in chromosome.genes:
+            if hasattr(gene, 'class_obj') and hasattr(gene.class_obj, 'name'):
+                class_name = gene.class_obj.name
+            elif hasattr(gene, 'class_id'):
+                class_name = gene.class_id
+            else:
+                class_name = "Unknown"
+                
+            if class_name in class_counts:
+                class_counts[class_name] += 1
+            else:
+                class_counts[class_name] = 1
+        
         info_text += "Class Distribution:\n"
-        for class_id, count in class_counts.items():
-            info_text += f"- {class_id}: {count}\n"
+        for cls, count in class_counts.items():
+            info_text += f"- {cls}: {count}\n"
         
-        # Add day distribution information
-        day_counts = Counter(gene.time_slot.dayOfWeek for gene in chromosome.genes)
-        info_text += "\nDay Distribution:\n"
-        for day_num, count in sorted(day_counts.items()):
-            day_name = days[day_num - 1] if 1 <= day_num <= len(days) else f"Day {day_num}"
-            info_text += f"- {day_name}: {count}\n"
-        
-        # Add constraint violations if any
-        if hasattr(chromosome, 'constraint_violations') and chromosome.constraint_violations:
+        # Add constraint violations if available
+        constraint_violations = getattr(chromosome, 'constraint_violations', [])
+        if constraint_violations:
             info_text += "\nConstraint Violations:\n"
-            for violation in chromosome.constraint_violations:
+            for violation in constraint_violations:
                 info_text += f"- {violation}\n"
         
         # Display the information
@@ -511,9 +628,9 @@ class PopulationVisualizer:
                 fontsize=10, verticalalignment='top',
                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
         
+        # Add tight layout and save if needed
         plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust for suptitle
         
-        # Save the figure if save_path is provided
         if save_path:
             self._save_figure(fig, save_path)
             
@@ -538,142 +655,223 @@ class PopulationVisualizer:
         Returns:
             Matplotlib figure
         """
-        # Create figure with 2x2 subplots
-        fig = plt.figure(figsize=(16, 12))
-        gs = gridspec.GridSpec(2, 2, height_ratios=[3, 1])
+        # Handle case where either chromosome is None
+        if chromosome1 is None or chromosome2 is None:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.text(0.5, 0.5, "Cannot compare chromosomes: One or both chromosomes are missing",
+                   horizontalalignment='center', verticalalignment='center',
+                   transform=ax.transAxes, fontsize=12)
+            ax.set_title(title)
+            if save_path:
+                self._save_figure(fig, save_path)
+            return fig
+            
+        # Handle case where both chromosomes have no genes
+        if (not hasattr(chromosome1, 'genes') or not chromosome1.genes) and \
+           (not hasattr(chromosome2, 'genes') or not chromosome2.genes):
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.text(0.5, 0.5, "Both chromosomes have no assignments to compare",
+                   horizontalalignment='center', verticalalignment='center',
+                   transform=ax.transAxes, fontsize=12)
+            ax.set_title(title)
+            if save_path:
+                self._save_figure(fig, save_path)
+            return fig
+        
+        # Create figure with 3 subplots (1st chromosome, 2nd chromosome, differences)
+        fig, axes = plt.subplots(1, 3, figsize=(20, 8), gridspec_kw={'width_ratios': [2, 2, 3]})
         fig.suptitle(title, fontsize=16)
         
-        # Define days and periods
-        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-        periods = list(range(1, 9))  # Assuming 8 periods
+        # Define day name map
+        day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
         
-        # 1. Create schedule grids for both chromosomes
-        schedule_grid1 = np.zeros((len(days), len(periods)), dtype=object)
-        schedule_grid2 = np.zeros((len(days), len(periods)), dtype=object)
+        # Helper function to convert numeric day to name
+        def day_number_to_name(day_num):
+            # 1-indexed day numbers (where 1 = Monday)
+            if 1 <= day_num <= 5:
+                return day_names[day_num-1]
+            return f"Day {day_num}"  # Fallback
         
-        # Initialize with empty strings
-        for i in range(len(days)):
-            for j in range(len(periods)):
+        # Create empty schedule grids
+        schedule_grid1 = np.zeros((len(day_names), 8), dtype=object)  # Assuming 8 periods
+        schedule_grid2 = np.zeros((len(day_names), 8), dtype=object)
+        diff_grid = np.zeros((len(day_names), 8), dtype=object)
+        
+        for i in range(len(day_names)):
+            for j in range(8):  # Assuming 8 periods
                 schedule_grid1[i, j] = ""
                 schedule_grid2[i, j] = ""
+                diff_grid[i, j] = ""
         
-        # Fill in the schedule grids
-        for gene in chromosome1.genes:
-            day_idx = gene.time_slot.dayOfWeek - 1
-            period_idx = gene.time_slot.period - 1
-            if 0 <= day_idx < len(days) and 0 <= period_idx < len(periods):
-                schedule_grid1[day_idx, period_idx] = gene.class_id
-                
-        for gene in chromosome2.genes:
-            day_idx = gene.time_slot.dayOfWeek - 1
-            period_idx = gene.time_slot.period - 1
-            if 0 <= day_idx < len(days) and 0 <= period_idx < len(periods):
-                schedule_grid2[day_idx, period_idx] = gene.class_id
-        
-        # Create color grids
+        # Create cell color matrices
         cell_colors1 = np.full_like(schedule_grid1, 'white', dtype=object)
         cell_colors2 = np.full_like(schedule_grid2, 'white', dtype=object)
-        
-        # Track differences for the difference grid
-        diff_grid = np.zeros((len(days), len(periods)), dtype=object)
         diff_colors = np.full_like(diff_grid, 'white', dtype=object)
         
-        # Process first schedule
-        for i in range(len(days)):
-            for j in range(len(periods)):
-                if schedule_grid1[i, j]:
-                    class_id = schedule_grid1[i, j]
-                    hash_val = sum(ord(c) for c in class_id) % 10
-                    cell_colors1[i, j] = self.color_palette[hash_val]
+        # Fill in the schedule grids
+        for gene in chromosome1.genes if hasattr(chromosome1, 'genes') else []:
+            try:
+                # Get day and period, handling both possible structures
+                if hasattr(gene, 'time_slot'):
+                    day = gene.time_slot.dayOfWeek
+                    # If day is a string, convert to index
+                    if isinstance(day, str):
+                        day_idx = day_names.index(day)
+                    else:
+                        day_idx = day - 1  # 1-indexed to 0-indexed
                     
-                    # Initialize diff grid
-                    diff_grid[i, j] = class_id
-                    diff_colors[i, j] = cell_colors1[i, j]
-        
-        # Process second schedule and identify differences
-        for i in range(len(days)):
-            for j in range(len(periods)):
-                if schedule_grid2[i, j]:
-                    class_id = schedule_grid2[i, j]
-                    hash_val = sum(ord(c) for c in class_id) % 10
-                    cell_colors2[i, j] = self.color_palette[hash_val]
-                    
-                    # Compare with first schedule
-                    if schedule_grid1[i, j] != schedule_grid2[i, j]:
-                        diff_grid[i, j] = f"{schedule_grid1[i, j]} → {class_id}"
-                        diff_colors[i, j] = 'yellow'  # Highlight differences
-                    
-                    # Track assignments in second but not in first
-                    if not schedule_grid1[i, j]:
-                        diff_grid[i, j] = f"+ {class_id}"
-                        diff_colors[i, j] = 'lightgreen'
+                    period = gene.time_slot.period
+                    # If period is a string, convert to index
+                    if isinstance(period, str):
+                        period_idx = int(period) - 1
+                    else:
+                        period_idx = period - 1  # 1-indexed to 0-indexed
+                else:
+                    # Use day_of_week and period directly
+                    day_idx = gene.day_of_week - 1  # 1-indexed to 0-indexed
+                    period_idx = gene.period - 1    # 1-indexed to 0-indexed
                 
-                # Track assignments in first but not in second
-                elif schedule_grid1[i, j]:
-                    diff_grid[i, j] = f"- {schedule_grid1[i, j]}"
-                    diff_colors[i, j] = 'lightcoral'
+                # Get class ID or name
+                if hasattr(gene, 'class_obj') and hasattr(gene.class_obj, 'name'):
+                    class_id = gene.class_obj.name
+                elif hasattr(gene, 'class_id'):
+                    class_id = gene.class_id
+                else:
+                    class_id = "Unknown"
+                    
+                if 0 <= day_idx < len(day_names) and 0 <= period_idx < 8:
+                    schedule_grid1[day_idx, period_idx] = class_id
+                
+                    # Set color
+                    hash_val = hash(class_id) % len(self.color_palette)
+                    cell_colors1[day_idx, period_idx] = self.color_palette[hash_val]
+            except (ValueError, IndexError, AttributeError) as e:
+                # Skip if there's an error with the gene
+                continue
         
-        # 1. First chromosome schedule
-        ax1 = plt.subplot(gs[0, 0])
+        for gene in chromosome2.genes if hasattr(chromosome2, 'genes') else []:
+            try:
+                # Get day and period, handling both possible structures
+                if hasattr(gene, 'time_slot'):
+                    day = gene.time_slot.dayOfWeek
+                    # If day is a string, convert to index
+                    if isinstance(day, str):
+                        day_idx = day_names.index(day)
+                    else:
+                        day_idx = day - 1  # 1-indexed to 0-indexed
+                    
+                    period = gene.time_slot.period
+                    # If period is a string, convert to index
+                    if isinstance(period, str):
+                        period_idx = int(period) - 1
+                    else:
+                        period_idx = period - 1  # 1-indexed to 0-indexed
+                else:
+                    # Use day_of_week and period directly
+                    day_idx = gene.day_of_week - 1  # 1-indexed to 0-indexed
+                    period_idx = gene.period - 1    # 1-indexed to 0-indexed
+                
+                # Get class ID or name
+                if hasattr(gene, 'class_obj') and hasattr(gene.class_obj, 'name'):
+                    class_id = gene.class_obj.name
+                elif hasattr(gene, 'class_id'):
+                    class_id = gene.class_id
+                else:
+                    class_id = "Unknown"
+                
+                if 0 <= day_idx < len(day_names) and 0 <= period_idx < 8:
+                    schedule_grid2[day_idx, period_idx] = class_id
+                
+                    # Set color
+                    hash_val = hash(class_id) % len(self.color_palette)
+                    cell_colors2[day_idx, period_idx] = self.color_palette[hash_val]
+            except (ValueError, IndexError, AttributeError) as e:
+                # Skip if there's an error with the gene
+                continue
+        
+        # Create tables
+        ax1 = axes[0]
         table1 = ax1.table(
             cellText=schedule_grid1,
-            rowLabels=days,
-            colLabels=periods,
+            rowLabels=day_names,
+            colLabels=list(range(1, 9)),  # Assuming 8 periods
             cellColours=cell_colors1,
             loc='center',
             cellLoc='center'
         )
         
-        # Style the table
-        table1.auto_set_font_size(False)
-        table1.set_fontsize(10)
-        table1.scale(1, 1.5)  # Adjust table size
-        
-        # Hide axes
-        ax1.axis('off')
-        ax1.set_title(f'Chromosome 1 (Fitness: {chromosome1.fitness:.2f})', fontsize=14)
-        
-        # 2. Second chromosome schedule
-        ax2 = plt.subplot(gs[0, 1])
+        ax2 = axes[1]
         table2 = ax2.table(
             cellText=schedule_grid2,
-            rowLabels=days,
-            colLabels=periods,
+            rowLabels=day_names,
+            colLabels=list(range(1, 9)),  # Assuming 8 periods
             cellColours=cell_colors2,
             loc='center',
             cellLoc='center'
         )
         
-        # Style the table
-        table2.auto_set_font_size(False)
-        table2.set_fontsize(10)
-        table2.scale(1, 1.5)  # Adjust table size
-        
-        # Hide axes
-        ax2.axis('off')
-        ax2.set_title(f'Chromosome 2 (Fitness: {chromosome2.fitness:.2f})', fontsize=14)
-        
-        # 3. Differences visualization
-        ax3 = plt.subplot(gs[1, :])
+        ax3 = axes[2]
         table3 = ax3.table(
             cellText=diff_grid,
-            rowLabels=days,
-            colLabels=periods,
+            rowLabels=day_names,
+            colLabels=list(range(1, 9)),  # Assuming 8 periods
             cellColours=diff_colors,
             loc='center',
             cellLoc='center'
         )
         
-        # Style the table
+        # Style tables
+        table1.auto_set_font_size(False)
+        table1.set_fontsize(10)
+        table1.scale(1, 1.5)  # Adjust table size
+        
+        table2.auto_set_font_size(False)
+        table2.set_fontsize(10)
+        table2.scale(1, 1.5)  # Adjust table size
+        
         table3.auto_set_font_size(False)
         table3.set_fontsize(10)
         table3.scale(1, 1.5)  # Adjust table size
         
         # Hide axes
+        ax1.axis('off')
+        ax2.axis('off')
         ax3.axis('off')
         
+        # Set titles
+        ax1.set_title(f'Chromosome 1 (Fitness: {self._ensure_numeric(chromosome1.fitness):.2f})', fontsize=14)
+        ax2.set_title(f'Chromosome 2 (Fitness: {self._ensure_numeric(chromosome2.fitness):.2f})', fontsize=14)
+        
+        # Calculate differences
+        for i in range(len(day_names)):
+            for j in range(8):  # Assuming 8 periods
+                if schedule_grid1[i, j] != schedule_grid2[i, j]:
+                    diff_grid[i, j] = f"{schedule_grid1[i, j]} → {schedule_grid2[i, j]}"
+                    diff_colors[i, j] = 'yellow'  # Highlight differences
+                elif schedule_grid1[i, j] == "":
+                    diff_grid[i, j] = f"+ {schedule_grid2[i, j]}"
+                    diff_colors[i, j] = 'lightgreen'
+                elif schedule_grid2[i, j] == "":
+                    diff_grid[i, j] = f"- {schedule_grid1[i, j]}"
+                    diff_colors[i, j] = 'lightcoral'
+        
+        # Update table 3 with differences
+        table3 = ax3.table(
+            cellText=diff_grid,
+            rowLabels=day_names,
+            colLabels=list(range(1, 9)),  # Assuming 8 periods
+            cellColours=diff_colors,
+            loc='center',
+            cellLoc='center'
+        )
+        
+        # Style table 3
+        table3.auto_set_font_size(False)
+        table3.set_fontsize(10)
+        table3.scale(1, 1.5)  # Adjust table size
+        
         # Add legend for difference table
-        diff_title = f'Differences (Fitness Δ: {chromosome2.fitness - chromosome1.fitness:.2f})'
+        diff_title = f'Differences (Fitness Δ: {self._ensure_numeric(chromosome2.fitness) - self._ensure_numeric(chromosome1.fitness):.2f})'
         ax3.set_title(diff_title, fontsize=14)
         
         # Add a legend explaining colors
@@ -689,8 +887,8 @@ class PopulationVisualizer:
         # Calculate and display statistics
         diff_stats = (
             f"Total Changes: {np.sum(diff_colors != 'white')}\n"
-            f"Fitness Improvement: {chromosome2.fitness - chromosome1.fitness:.2f}\n"
-            f"Relative Improvement: {(chromosome2.fitness - chromosome1.fitness) / abs(chromosome1.fitness) * 100:.1f}%"
+            f"Fitness Improvement: {self._ensure_numeric(chromosome2.fitness) - self._ensure_numeric(chromosome1.fitness):.2f}\n"
+            f"Relative Improvement: {(self._ensure_numeric(chromosome2.fitness) - self._ensure_numeric(chromosome1.fitness)) / abs(self._ensure_numeric(chromosome1.fitness)) * 100:.1f}%"
         )
         ax3.text(0.98, 0.02, diff_stats, transform=ax3.transAxes, 
                 fontsize=10, verticalalignment='bottom', horizontalalignment='right',

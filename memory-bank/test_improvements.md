@@ -120,11 +120,11 @@ This document tracks improvements made to the testing framework for the scheduli
   - Only 2 exceptional code paths remain uncovered (rare failure scenarios)
   - All tests pass consistently in the test environment
 
-### Visualization Module Test Improvements (March 1, 2025)
+### Visualization Module Test Improvements (March 1-2, 2025)
 
 #### Comprehensive Coverage for Visualization Components
 
-- Achieved 80% test coverage for visualizations.py:
+- Achieved 80% test coverage for visualizations.py (up from 6%):
   - Added extensive tests for all PopulationVisualizer methods
   - Implemented tests for ChromosomeEncoder with mock implementations
   - Created mocks for all visualization methods to verify calls and arguments
@@ -156,6 +156,18 @@ This document tracks improvements made to the testing framework for the scheduli
 - ChromosomeEncoder implementations:
   - `chromosome_to_assignment_matrix`: Transforms chromosomes into class/timeslot matrices
   - `chromosome_to_distance_matrix`: Calculates distance matrices between chromosomes
+
+#### Specific Test Improvements (March 2, 2025)
+
+- Fixed failing tests in the visualization module:
+  - **`test_visualize_fitness_landscape_empty`**: Corrected to verify `ax.text()` is called instead of `plt.text()`
+  - **`test_visualize_population_evolution_actual`**: Fixed to properly mock matplotlib axes and verify `ax1.plot()` is called
+  - **`test_visualize_population_evolution_empty`**: Updated to check for `ax.text()` instead of `plt.text()`
+
+- Significantly improved test coverage quality:
+  - Ensured tests reflect actual implementation details (axes vs. plt methods)
+  - Added appropriate error message validation
+  - Verified proper parameter passing and return values
 
 #### Remaining Coverage Gaps
 
