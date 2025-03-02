@@ -16,13 +16,23 @@ import type {
 } from '../types/dashboard';
 import type { ComparisonResult } from '../store/types';
 
-class ApiClient {
+export class ApiClient {
+  private csrfToken: string | null = null;
   private baseUrl: string;
-
+  
   constructor() {
-    this.baseUrl = import.meta.env.PROD 
-      ? '/api'  // Production URL
-      : 'http://localhost:8000';  // FastAPI development URL
+    // For tests, use a simplified approach without import.meta
+    // This works in both browser and test environments
+    
+    // Check if we're in a browser environment with window
+    if (typeof window !== 'undefined') {
+      this.baseUrl = window.location.hostname === 'localhost' 
+        ? 'http://localhost:8000' // Development URL 
+        : '/api'; // Production URL
+    } else {
+      // We're in a Node.js environment (tests)
+      this.baseUrl = 'http://localhost:8000'; // Default to dev URL for tests
+    }
   }
 
   async generateSchedule(
@@ -255,9 +265,17 @@ interface ValidationError {
   }>;
 }
 
-const SCHEDULER_URL = import.meta.env.PROD 
-  ? '/api'  // Production URL
-  : 'http://localhost:8000';  // FastAPI development URL
+const SCHEDULER_URL = (() => {
+  // Check if we're in a browser environment with window
+  if (typeof window !== 'undefined') {
+    return window.location.hostname === 'localhost'
+      ? 'http://localhost:8001' // Development URL for scheduler
+      : '/scheduler'; // Production URL for scheduler
+  } else {
+    // We're in a Node.js environment (tests)
+    return 'http://localhost:8001'; // Default to dev URL for tests
+  }
+})();
 
 type SchedulerVersion = 'stable' | 'dev';
 
