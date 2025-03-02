@@ -139,14 +139,14 @@ The assessment phase involves analyzing the current state of the codebase to ide
 ### 2.7 MVP Requirements Validation [M]
 
 - **Task ID**: A-07
-- **Status**: [ ]
+- **Status**: [✓]
 - **Description**: Verify and clarify MVP requirements
 - **Steps**:
   1. Extract requirements from existing documentation
   2. Categorize as MVP or post-MVP
   3. Identify any ambiguous requirements
   4. Document validation criteria for each requirement
-- **Output**: MVP requirements validation document
+- **Output**: [MVP requirements validation document](/memory-bank/review/mvp_requirements_validation.md)
 
 ---
 
