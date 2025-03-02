@@ -2,7 +2,7 @@ import React from 'react';
 import type { SchedulerTab } from '../types';
 import { useScheduleStore } from '../store/scheduleStore';
 import { FileUpload } from './FileUpload';
-import { Calendar } from './Calendar';
+import { ScheduleViewer } from './ScheduleViewer';
 import { ScheduleDebugPanel } from './ScheduleDebugPanel';
 import { SolverConfig } from './SolverConfig';
 import { Dashboard } from './dashboard';
@@ -71,7 +71,7 @@ export const TabContainer: React.FC = () => {
 
         {currentTab === 'visualize' && (
           <div className="bg-white shadow rounded-lg p-6">
-            <Calendar />
+            <ScheduleViewer />
           </div>
         )}
 
