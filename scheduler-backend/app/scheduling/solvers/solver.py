@@ -30,6 +30,7 @@ from ..constraints.relaxation import (
     RelaxableConstraint,
     RelaxationResult
 )
+from ..dependencies import inject, get_container
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +40,16 @@ class UnifiedSolver(BaseSolver):
     Features can be enabled/disabled through configuration.
     """
     
-    def __init__(self, request: Optional[ScheduleRequest] = None, 
-                config: Optional[SolverConfig] = None,
-                use_or_tools: bool = True,
-                use_genetic: bool = True,
-                custom_weights: Optional[Dict[str, int]] = None,
-                enable_relaxation: Optional[bool] = None):
+    def __init__(
+        self, 
+        request: Optional[ScheduleRequest] = None, 
+        config: Optional[SolverConfig] = None,
+        use_or_tools: bool = True,
+        use_genetic: bool = True,
+        custom_weights: Optional[Dict[str, int]] = None,
+        enable_relaxation: Optional[bool] = None,
+        constraint_manager: Optional[ConstraintManager] = None
+    ):
         """
         Initialize the unified solver.
         
@@ -55,12 +60,16 @@ class UnifiedSolver(BaseSolver):
             use_genetic: Whether to use genetic algorithm
             custom_weights: Optional custom weights to override defaults
             enable_relaxation: Whether to enable constraint relaxation
+            constraint_manager: Optional constraint manager for handling constraints
         """
         super().__init__("cp-sat-unified")
         self.request = request
         self.use_or_tools = use_or_tools
         self.use_genetic = use_genetic
-        self.base_config = config
+        self.base_config = config or SolverConfig()
+        
+        # Initialize constraint manager
+        self.constraint_manager = constraint_manager or self._resolve_constraint_manager()
         
         # Initialize or-tools solver if needed
         if use_or_tools:
@@ -73,7 +82,6 @@ class UnifiedSolver(BaseSolver):
             
         self._last_run_metadata = None
         self._last_stable_response: Optional[ScheduleResponse] = None
-        self._constraint_manager = ConstraintManager()
         self.constraint_violations = []
         
         # Import config module directly for defaults
@@ -120,7 +128,7 @@ class UnifiedSolver(BaseSolver):
         # Add base constraints through constraint manager
         base_constraints = get_base_constraints()
         for constraint in base_constraints:
-            self._constraint_manager.add_constraint(constraint)
+            self.constraint_manager.add_constraint(constraint)
             
             # Register relaxable constraints with the controller
             if self.enable_relaxation and isinstance(constraint, RelaxableConstraint):
@@ -467,7 +475,7 @@ class UnifiedSolver(BaseSolver):
             logger.info(f"- Parallel evaluation: {config_module.META_CONFIG.PARALLEL_EVALUATION}")
             
         logger.info("\nConstraints:")
-        for constraint in self.constraints:
+        for constraint in self.constraint_manager.constraints:
             logger.info(f"- {constraint.name}")
         logger.info("\nObjectives:")
         for objective in self.objectives:
@@ -504,7 +512,7 @@ class UnifiedSolver(BaseSolver):
                 )
                 
                 # Apply constraints through manager
-                self._constraint_manager.apply_all(context)
+                self.constraint_manager.apply_all(context)
                 response = super().create_schedule(request)
             else:
                 raise ValueError("Neither genetic algorithm nor OR-Tools solver is enabled")
@@ -520,7 +528,7 @@ class UnifiedSolver(BaseSolver):
             )
             
             # Validate using constraint manager
-            violations = self._constraint_manager.validate_all(
+            violations = self.constraint_manager.validate_all(
                 response.assignments,
                 validation_context
             )
@@ -557,6 +565,22 @@ class UnifiedSolver(BaseSolver):
             logger.error("Full traceback:")
             logger.error(traceback.format_exc())
             raise
+
+    def _resolve_constraint_manager(self) -> ConstraintManager:
+        """
+        Resolve the constraint manager from the dependency container
+        
+        Returns:
+            A constraint manager instance
+        """
+        try:
+            # Try to get from the container
+            container = get_container()
+            return container.resolve(ConstraintManager)
+        except (KeyError, ImportError, ValueError):
+            # Fall back to creating a new instance
+            logger.debug("Creating new ConstraintManager instance (container resolution failed)")
+            return ConstraintManager()
 
     def _compare_solutions(self, stable_response: ScheduleResponse, new_response: ScheduleResponse) -> Dict[str, Any]:
         """Compare two solutions when solution comparison is enabled"""

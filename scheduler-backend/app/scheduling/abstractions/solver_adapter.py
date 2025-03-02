@@ -14,6 +14,8 @@ from ..solvers.solver import UnifiedSolver, SolverConfig
 from .solver_strategy import SolverStrategy, SolverResult
 from .solver_config import SolverConfiguration, SolverType, OptimizationLevel
 from .context import SchedulerContext
+from ..dependencies import inject, get_container
+from ..core import ConstraintManager
 
 logger = logging.getLogger(__name__)
 
@@ -27,17 +29,24 @@ class UnifiedSolverAdapter(SolverStrategy):
     used with the new abstraction layer while a full refactoring is in progress.
     """
     
-    def __init__(self, name: str = "unified_solver_adapter", description: str = "Adapter for UnifiedSolver"):
+    def __init__(
+        self, 
+        name: str = "unified_solver_adapter", 
+        description: str = "Adapter for UnifiedSolver",
+        constraint_manager: Optional[ConstraintManager] = None
+    ):
         """
         Initialize the adapter
         
         Args:
             name: The name of the strategy
             description: A description of the strategy
+            constraint_manager: Optional constraint manager instance
         """
         super().__init__(name, description)
         self._unified_solver = None
         self._config = None
+        self._constraint_manager = constraint_manager
     
     def _ensure_solver_initialized(self, request: Optional[ScheduleRequest] = None) -> UnifiedSolver:
         """
@@ -57,15 +66,29 @@ class UnifiedSolverAdapter(SolverStrategy):
             # Create a solver config
             solver_config = SolverConfig()
             
+            # Get the dependency container
+            container = get_container()
+            
+            # Initialize the unified solver with dependency injection
+            if container.resolve(ConstraintManager, "default") and not self._constraint_manager:
+                self._constraint_manager = container.resolve(ConstraintManager, "default")
+            
             # Initialize the unified solver
-            self._unified_solver = UnifiedSolver(
-                request=request,
-                config=solver_config,
-                use_or_tools=use_or_tools,
-                use_genetic=use_genetic,
-                custom_weights=self._config.weights,
-                enable_relaxation=self._config.enable_relaxation
-            )
+            solver_kwargs = {
+                "request": request,
+                "config": solver_config,
+                "use_or_tools": use_or_tools,
+                "use_genetic": use_genetic,
+                "custom_weights": self._config.weights,
+                "enable_relaxation": self._config.enable_relaxation
+            }
+            
+            # Add constraint manager if available
+            if self._constraint_manager:
+                solver_kwargs["constraint_manager"] = self._constraint_manager
+                
+            # Create the solver with all required dependencies
+            self._unified_solver = UnifiedSolver(**solver_kwargs)
         
         return self._unified_solver
     

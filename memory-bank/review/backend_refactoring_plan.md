@@ -60,10 +60,16 @@ Based on the Backend Component Analysis, we've identified these specific refacto
    - Create a constraint registry for dynamic constraint loading
    - **Output**: Improved constraint management with better extensibility
 
-4. **Improve Dependency Injection**: **Status**: [ ]
+4. **Improve Dependency Injection**: **Status**: [✓]
    - Use constructor injection for dependencies
    - Reduce direct instantiation of dependencies
    - Prepare for future IoC container integration
+   - **Progress Notes**:
+     - March 2, 2025: Implemented a centralized dependency injection container in `dependencies.py`
+     - March 2, 2025: Created a constraint factory to manage constraint creation and configuration
+     - March 2, 2025: Updated the UnifiedSolverAdapter to use dependency injection
+     - March 2, 2025: Added container initialization code to ensure all dependencies are properly registered
+     - March 2, 2025: Created comprehensive documentation and tests for the dependency injection system
    - **Output**: More testable code with reduced coupling between components
 
 ### 3.2 API Layer Improvements
@@ -515,7 +521,7 @@ Successful implementation of this plan will result in a more maintainable, testa
   - Extract Configuration Handling: [✓]
   - Implement Strategy Pattern for Solvers: [✓]
   - Extract Constraint Management: [✓]
-  - Improve Dependency Injection: Not Started
+  - Improve Dependency Injection: [✓]
 
 #### 3.2 API Layer Improvements
 - **Status**: [ ]
