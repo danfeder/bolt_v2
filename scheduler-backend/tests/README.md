@@ -171,3 +171,109 @@ Memory and timing metrics are logged for analysis.
 5. Keep performance tests realistic
 6. Use appropriate assertions
 7. Follow naming conventions
+
+# Test Coverage Improvement Plan
+
+## Current Coverage Status
+
+Based on the latest coverage analysis, we have identified several modules that have low test coverage:
+
+1. **meta_optimizer.py**: 19% coverage
+2. **optimizer.py**: 35% coverage
+3. **parallel.py**: 27% coverage
+4. **visualizations.py**: 80% coverage
+
+## Approach for Improving Coverage
+
+### 1. MetaOptimizer Module (meta_optimizer.py)
+
+The MetaOptimizer is responsible for tuning weights in the scheduling system. Key functions to test:
+
+- **WeightChromosome class**: Test serialization and conversion methods
+- **MetaObjectiveCalculator**: Test evaluation of weight configurations
+- **MetaOptimizer**: Test initialization, population generation, evaluation, parent selection, crossover, mutation, and optimization workflow
+
+**Test Plan**:
+- Create test fixtures for ScheduleRequest and SolverConfig
+- Test WeightChromosome initialization and conversion to WeightConfig
+- Test MetaObjectiveCalculator's evaluation functions with mocked solver
+- Test MetaOptimizer's initialization with various parameters
+- Test population initialization and evaluation
+- Test parent selection logic
+- Test crossover and mutation operations
+- Test the complete optimization workflow with controlled randomness
+
+### 2. GeneticOptimizer Module (optimizer.py)
+
+The GeneticOptimizer manages the genetic algorithm optimization process. Key functions to test:
+
+- **Initialization with various parameters**
+- **Time limit handling**
+- **Optimization process with and without adaptation**
+- **Result conversion and metadata generation**
+
+**Test Plan**:
+- Test initialization with different parameter combinations
+- Test the optimization process with a simplified problem
+- Test time limit handling and early stopping
+- Test adaptation integration
+- Test result generation and metadata collection
+- Test parallelization behavior
+
+### 3. Parallel Processing Module (parallel.py)
+
+The parallel.py module provides utilities for parallel processing in the genetic algorithm. Key functions to test:
+
+- **Worker count determination**
+- **Parallel mapping with exception handling**
+- **Fallback to sequential processing**
+- **Test mode behavior**
+
+**Test Plan**:
+- Test worker count determination with different CPU configurations
+- Test parallel mapping with successful and failing functions
+- Test exception handling and fallback mechanisms
+- Test behavior in test mode
+
+### 4. Visualizations Module (visualizations.py)
+
+The visualizations.py module provides tools for visualizing genetic algorithm data. Key functions to test:
+
+- **PopulationVisualizer initialization**
+- **Diversity visualization**
+- **Fitness landscape visualization**
+- **Population evolution visualization**
+- **Chromosome visualization and comparison**
+- **ChromosomeEncoder utilities**
+
+**Test Plan**:
+- Test initializer with different output directories
+- Test visualization methods with mocked population data
+- Test figure generation and saving
+- Test ChromosomeEncoder methods
+
+## Implementation Strategy
+
+1. **Start with simple unit tests** for each class and method
+2. **Use mocking** extensively to isolate components
+3. **Create test fixtures** for common test data
+4. **Use parametrized tests** for comprehensive coverage
+5. **Implement integration tests** for key workflows
+
+## Prioritization
+
+1. **optimizer.py** (highest priority - core functionality)
+2. **parallel.py** (critical for performance)
+3. **meta_optimizer.py** (important for weight tuning)
+4. **visualizations.py** (useful but less critical)
+
+## Target Coverage
+
+Our goal is to increase the coverage of these modules to at least:
+
+- **optimizer.py**: 80%
+- **parallel.py**: 80%
+- **meta_optimizer.py**: 75%
+- **visualizations.py**: 80%
+
+This will bring our overall genetic algorithm module coverage above the 75% target.
