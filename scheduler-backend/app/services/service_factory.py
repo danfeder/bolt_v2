@@ -7,6 +7,7 @@ It ensures that services are created consistently and with the correct dependenc
 
 import logging
 from typing import Dict, Any, Type, Optional, TypeVar, Generic, cast
+from ..repositories.repository_factory import RepositoryFactory
 
 from .base_service import BaseService
 from .scheduler_service import SchedulerService
@@ -124,6 +125,10 @@ class ServiceFactory:
         Returns:
             The SchedulerService singleton instance
         """
+        if 'scheduler' not in self._services:
+            schedule_repository = RepositoryFactory.get_schedule_repository()
+            self._services['scheduler'] = SchedulerService(schedule_repository=schedule_repository)
+        
         return self.get_typed_service('scheduler', SchedulerService, **kwargs)
 
 

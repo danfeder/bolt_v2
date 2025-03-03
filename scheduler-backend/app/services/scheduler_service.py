@@ -7,6 +7,7 @@ a clean interface for the API layer.
 """
 
 import logging
+import uuid
 from typing import Dict, Any, List, Optional, Union, Tuple
 from datetime import datetime
 
@@ -20,6 +21,7 @@ from ..scheduling.solvers.config import (
     ENABLE_CONSTRAINT_RELAXATION
 )
 from ..utils.date_utils import to_utc_isoformat
+from ..repositories.schedule_repository import ScheduleRepository
 from .base_service import BaseService
 
 # Set up logger
@@ -47,6 +49,11 @@ class SchedulerService(BaseService):
         self._unified_solver = kwargs.get('unified_solver', UnifiedSolver())
         self._stable_solver = kwargs.get('stable_solver', UnifiedSolver(use_genetic=False))
         self._dev_solver = kwargs.get('dev_solver', UnifiedSolver(use_genetic=True))
+        
+        # Get repository from dependencies
+        self._schedule_repository = kwargs.get('schedule_repository')
+        if not self._schedule_repository:
+            self._log_warning("No schedule repository provided, schedule persistence disabled")
         
         self._log_info("SchedulerService initialized with solvers")
     
@@ -372,6 +379,81 @@ class SchedulerService(BaseService):
                 500,
                 f"Error creating relaxed schedule: {str(e)}"
             )
+    
+    def create_schedule(self, request: ScheduleRequest) -> ScheduleResponse:
+        """
+        Create a schedule using the default solver configuration.
+        
+        Args:
+            request: The schedule request
+            
+        Returns:
+            ScheduleResponse containing the created schedule
+        """
+        self._log_info("Creating schedule with default solver")
+        
+        response = self._unified_solver.create_schedule(request)
+        
+        # Add request ID to response metadata if not present
+        if not hasattr(response, "metadata") or not response.metadata:
+            response.metadata = ScheduleMetadata()
+        
+        # Add timestamp if not present
+        if not hasattr(response.metadata, "timestamp") or not response.metadata.timestamp:
+            response.metadata.timestamp = to_utc_isoformat(datetime.now())
+        
+        # Generate and assign schedule ID
+        schedule_id = f"schedule_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        response.id = schedule_id
+        
+        # Save to repository if available
+        if self._schedule_repository:
+            # Generate request ID and save request for future reference
+            request_id = f"request_{schedule_id}"
+            self._schedule_repository.save_request(request_id, request)
+            
+            # Save the response
+            try:
+                saved_response = self._schedule_repository.create(response)
+                self._log_info(f"Saved schedule with ID: {saved_response.id}")
+            except Exception as e:
+                self._log_error(f"Failed to save schedule: {str(e)}")
+        
+        return response
+    
+    def get_schedule(self, schedule_id: str) -> Optional[ScheduleResponse]:
+        """
+        Retrieve a previously generated schedule by ID.
+        
+        Args:
+            schedule_id: The unique identifier of the schedule
+            
+        Returns:
+            The schedule if found, None otherwise
+        """
+        if not self._schedule_repository:
+            self._log_warning("No repository available, cannot retrieve schedule")
+            return None
+            
+        return self._schedule_repository.get(schedule_id)
+    
+    def get_schedule_history(self, start_date: Optional[datetime] = None,
+                             end_date: Optional[datetime] = None) -> List[Dict[str, Any]]:
+        """
+        Get a history of generated schedules with metadata.
+        
+        Args:
+            start_date: Optional start date for filtering
+            end_date: Optional end date for filtering
+            
+        Returns:
+            List of schedule metadata records
+        """
+        if not self._schedule_repository:
+            self._log_warning("No repository available, cannot retrieve schedule history")
+            return []
+            
+        return self._schedule_repository.get_schedule_history(start_date, end_date)
     
     def get_solver_metrics(self) -> Dict[str, Any]:
         """

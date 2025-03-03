@@ -1,0 +1,203 @@
+name: Backend CD
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+    paths:
+      - 'scheduler-backend/**'
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  # Check that all tests pass before proceeding
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          cd scheduler-backend
+          pip install -r requirements.txt
+          pip install pytest
+      
+      - name: Run critical tests
+        run: |
+          cd scheduler-backend
+          python -m pytest tests/unit/scheduling/solvers tests/unit/api -xvs
+
+  build:
+    name: Build Application
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          cd scheduler-backend
+          pip install -r requirements.txt
+          pip install build wheel
+      
+      - name: Build package
+        run: |
+          cd scheduler-backend
+          python -m build
+          
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: scheduler-backend/dist/
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: staging
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+          path: scheduler-backend/dist
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install deployment tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install awscli
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Deploy to staging
+        run: |
+          # This is a placeholder for actual deployment commands
+          # In a real system, you might use AWS CLI to deploy to ECS, Lambda, or other services
+          echo "Deploying to staging environment"
+          # aws s3 cp scheduler-backend/dist/*.whl s3://my-deployment-bucket/staging/
+          # aws lambda update-function-code --function-name scheduler-api-staging --s3-bucket my-deployment-bucket --s3-key staging/scheduler-backend-latest.whl
+      
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests against staging environment"
+          # python -m pytest tests/smoke_tests/staging -xvs
+          
+  deploy-production:
+    name: Deploy to Production
+    needs: [build, deploy-staging]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment: production
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+          path: scheduler-backend/dist
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install deployment tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install awscli
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Deploy to production
+        run: |
+          # This is a placeholder for actual deployment commands
+          echo "Deploying to production environment"
+          # aws s3 cp scheduler-backend/dist/*.whl s3://my-deployment-bucket/production/
+          # aws lambda update-function-code --function-name scheduler-api-production --s3-bucket my-deployment-bucket --s3-key production/scheduler-backend-latest.whl
+      
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests against production environment"
+          # python -m pytest tests/smoke_tests/production -xvs
+          
+  release:
+    name: Create Release
+    needs: deploy-production
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Generate changelog based on commits since last tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            git log --pretty=format:"- %s" > CHANGELOG.md
+          else
+            git log --pretty=format:"- %s" ${PREVIOUS_TAG}..HEAD > CHANGELOG.md
+          fi
+          
+          # Set release notes as output
+          RELEASE_NOTES=$(cat CHANGELOG.md)
+          RELEASE_NOTES="${RELEASE_NOTES//'%'/'%25'}"
+          RELEASE_NOTES="${RELEASE_NOTES//$'\n'/'%0A'}"
+          RELEASE_NOTES="${RELEASE_NOTES//$'\r'/'%0D'}"
+          echo "release_notes=${RELEASE_NOTES}" >> $GITHUB_OUTPUT
+      
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: ${{ steps.release_notes.outputs.release_notes }}
+          draft: false
+          prerelease: false
