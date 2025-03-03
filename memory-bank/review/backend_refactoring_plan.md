@@ -264,11 +264,18 @@ The refactoring will be implemented in four phases:
   - March 2, 2025: Added comprehensive end-to-end tests for repository and service layer
 - **Output**: Solid foundation for further refactoring
 
-#### Phase 2: Core Refactoring (3-4 weeks) - **Status**: [ ]
-- Refactor UnifiedSolver and constraint system - **Status**: [ ]
+#### Phase 2: Core Refactoring (3-4 weeks) - **Status**: [P]
+- Refactor UnifiedSolver and constraint system - **Status**: [P]
 - Implement service layer - **Status**: [ ]
 - Consolidate and improve models - **Status**: [ ]
 - Enhance test coverage for critical components - **Status**: [ ]
+- **Progress Notes**:
+  - March 2, 2025: Enhanced the constraint system with auto-registration, constraint categories, compatibility validation, and rich validation reporting
+  - March 2, 2025: Created example constraints (DayOfWeekConstraint, TimeWindowConstraint) demonstrating the new features
+  - March 2, 2025: Added comprehensive unit tests for the enhanced constraint system
+  - March 2, 2025: Created detailed technical documentation for the constraint system
+  - March 2, 2025: Integrated constraint system documentation with the consolidated MkDocs documentation framework
+- **Output**: More maintainable and scalable core architecture
 
 #### Phase 3: API Enhancement (2-3 weeks) - **Status**: [P]
 - Standardize API layer - **Status**: [P]
@@ -307,7 +314,7 @@ For each phase, we will follow this process:
    - Conduct code reviews
    - Run integration tests
    - **Progress Notes**:
-     - March 2, 2025: Improved test coverage for visualization module
+     - March 2, 2025: Improved test coverage of visualization module from 6% to 80%
      - March 2, 2025: Fixed validation errors in genetic experiment tests
    - **Output**: Verified code with comprehensive test coverage
 
@@ -465,7 +472,7 @@ The refactoring will be implemented in the following sequence:
    - Update API to use services
    - **Output**: Clean separation of concerns
 
-3. **Core Solver Refactoring (Week 5-7)**: **Status**: [ ]
+3. **Core Solver Refactoring (Week 5-7)**: **Status**: [P]
    - Refactor UnifiedSolver using strategy pattern
    - Enhance constraint management
    - Improve solver initialization
@@ -505,7 +512,7 @@ The critical path for implementation is:
 |------|------------|------------|--------|
 | Foundation | None | Low | [✓] Complete |
 | Service Layer | Foundation | Medium | [ ] Not Started |
-| Core Solver Refactoring | Service Layer (partial) | High | [ ] Not Started |
+| Core Solver Refactoring | Service Layer (partial) | High | [P] In Progress |
 | Model Improvements | Foundation | Medium | [ ] Not Started |
 | API Standardization | Service Layer, Model Improvements | Medium | [P] In Progress |
 | Genetic Algorithm Enhancements | Core Solver Refactoring | Low | [ ] Not Started |
@@ -636,11 +643,13 @@ Successful implementation of this plan will result in a more maintainable, testa
 | | | | - Implemented service layer with proper separation of concerns |
 | | | | - Created standardized response handling for consistent API responses |
 | | | | - Fixed validation errors in genetic experiment tests |
-| Phase 2: Core Refactoring | Week 6 | [ ] | Not Started (0%) | 
-| | | | - UnifiedSolver and constraint system refactoring not started |
-| | | | - Service layer implementation not started |
-| | | | - Model improvements not started |
-| | | | - Critical component test coverage enhancement not started |
+| Phase 2: Core Refactoring | Week 6 | [P] | Started (25%) |
+| | | | - UnifiedSolver and constraint system refactoring in progress |
+| | | | - Enhanced the constraint system with auto-registration, constraint categories, compatibility validation, and rich validation reporting |
+| | | | - Created example constraints (DayOfWeekConstraint, TimeWindowConstraint) demonstrating the new features |
+| | | | - Added comprehensive unit tests for the enhanced constraint system |
+| | | | - Created detailed technical documentation for the constraint system |
+| | | | - Integrated constraint system documentation with the consolidated MkDocs documentation framework |
 | Phase 3: API Enhancement | Week 9 | [P] | Started (15%) |
 | | | | - Standardized error handling in the `get_solver_metrics` endpoint |
 | | | | - Enhanced API tests for comprehensive error handling validation |

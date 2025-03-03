@@ -83,6 +83,82 @@ pytest -xvs tests/
 uvicorn app.main:app --reload
 ```
 
+## Constraint System
+
+The scheduler uses an enhanced constraint system for defining and enforcing scheduling rules. The constraint system supports:
+
+### Key Features
+
+1. **Auto-Registration of Constraints**
+   - Constraints are automatically discovered and registered
+   - Factory pattern for easy constraint creation
+   - Support for constraint metadata
+
+2. **Constraint Categories**
+   - Constraints are organized by category (e.g., schedule, instructor, classroom)
+   - Filtering and validation by category
+   - Hierarchical constraint management
+
+3. **Constraint Compatibility**
+   - Define incompatible constraints
+   - Specify required dependencies between constraints
+   - Automatic validation of constraint configurations
+
+4. **Rich Validation**
+   - Detailed violation reporting with context
+   - Multiple severity levels (INFO, WARNING, ERROR, CRITICAL)
+   - Support for relaxable constraints with adjustable enforcement
+
+### Usage Example
+
+```python
+# Create a constraint factory
+factory = get_constraint_factory()
+
+# Register all default constraints
+register_default_constraints()
+
+# Create a constraint manager
+manager = EnhancedConstraintManager(factory)
+
+# Add constraints by category
+manager.create_and_add_constraints_by_category("schedule")
+
+# Validate assignments
+is_valid, violations = manager.validate_all(assignments, context)
+
+# Handle violations
+for violation in violations:
+    print(f"{violation.severity}: {violation.message}")
+    if violation.context:
+        print(f"Context: {violation.context}")
+```
+
+### Creating Custom Constraints
+
+```python
+class MyCustomConstraint(BaseConstraint):
+    def __init__(self, name="my_custom_constraint", enabled=True):
+        super().__init__(name, enabled)
+        self.category = "custom"
+        
+    def apply(self, context):
+        # Apply constraint logic
+        pass
+        
+    def validate(self, assignments, context):
+        violations = []
+        # Validation logic
+        if violation_detected:
+            violations.append(self.create_error_violation(
+                "Detailed error message",
+                context={...}
+            ))
+        return violations
+```
+
+> **Detailed Documentation**: For comprehensive documentation on the constraint system, see the [Constraints System Documentation](/docs/component-reference/backend/constraints.md) in the project documentation.
+
 ## Common Issues
 
 1. OR-Tools Installation Fails:

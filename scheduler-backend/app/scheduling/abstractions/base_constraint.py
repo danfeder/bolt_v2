@@ -40,6 +40,8 @@ class BaseConstraint(ABC):
         self._name = name
         self._enabled = enabled
         self._weight = weight
+        self._category = "general"
+        self._description = self.__doc__ or f"Constraint: {name}"
     
     @property
     def name(self) -> str:
@@ -71,6 +73,26 @@ class BaseConstraint(ABC):
         """Check if this is a hard constraint"""
         return self._weight is None
     
+    @property
+    def category(self) -> str:
+        """Get the constraint category"""
+        return self._category
+    
+    @category.setter
+    def category(self, category: str) -> None:
+        """Set the constraint category"""
+        self._category = category
+    
+    @property
+    def description(self) -> str:
+        """Get the constraint description"""
+        return self._description
+    
+    @description.setter
+    def description(self, description: str) -> None:
+        """Set the constraint description"""
+        self._description = description
+    
     @abstractmethod
     def apply(self, context: SchedulerContext) -> None:
         """
@@ -99,12 +121,116 @@ class BaseConstraint(ABC):
         """
         raise NotImplementedError("Subclasses must implement validate()")
     
+    def create_violation(
+        self,
+        message: str,
+        severity: ConstraintSeverity = ConstraintSeverity.ERROR,
+        context: Optional[Dict[str, Any]] = None
+    ) -> ConstraintViolation:
+        """
+        Create a constraint violation
+        
+        This is a convenience method for creating standardized constraint
+        violations with the appropriate constraint name.
+        
+        Args:
+            message: The violation message
+            severity: The violation severity
+            context: Additional context information for the violation
+            
+        Returns:
+            A new constraint violation
+        """
+        return ConstraintViolation(
+            constraint_name=self.name,
+            message=message,
+            severity=severity,
+            context=context or {}
+        )
+    
+    def create_info_violation(
+        self,
+        message: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> ConstraintViolation:
+        """Create an informational (non-violation) message"""
+        return self.create_violation(
+            message=message,
+            severity=ConstraintSeverity.INFO,
+            context=context
+        )
+    
+    def create_warning_violation(
+        self,
+        message: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> ConstraintViolation:
+        """Create a warning violation (minor issue)"""
+        return self.create_violation(
+            message=message,
+            severity=ConstraintSeverity.WARNING,
+            context=context
+        )
+    
+    def create_error_violation(
+        self,
+        message: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> ConstraintViolation:
+        """Create an error violation (significant issue)"""
+        return self.create_violation(
+            message=message,
+            severity=ConstraintSeverity.ERROR,
+            context=context
+        )
+    
+    def create_critical_violation(
+        self,
+        message: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> ConstraintViolation:
+        """Create a critical violation (solution is invalid)"""
+        return self.create_violation(
+            message=message,
+            severity=ConstraintSeverity.CRITICAL,
+            context=context
+        )
+    
+    def format_violation_context(
+        self,
+        assignment: Dict[str, Any],
+        additional_context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Format an assignment and additional context into a standardized
+        constraint violation context dictionary
+        
+        Args:
+            assignment: The assignment related to the violation
+            additional_context: Additional context information
+            
+        Returns:
+            A context dictionary for a constraint violation
+        """
+        context = {
+            "assignment": {
+                "name": assignment.get("name", ""),
+                "period": assignment.get("period", ""),
+                "date": assignment.get("date", ""),
+                "instructor": assignment.get("instructor", ""),
+            }
+        }
+        
+        if additional_context:
+            context.update(additional_context)
+            
+        return context
+    
     def __str__(self) -> str:
         """String representation of the constraint"""
-        constraint_type = "Hard" if self.is_hard_constraint else "Soft"
-        enabled_status = "Enabled" if self.enabled else "Disabled"
-        weight_str = "" if self.is_hard_constraint else f", weight={self.weight}"
-        return f"{constraint_type} constraint '{self.name}' ({enabled_status}{weight_str})"
+        weight_str = "Hard" if self.is_hard_constraint else f"Soft (weight={self.weight})"
+        enabled_str = "Enabled" if self.enabled else "Disabled"
+        return f"{self.name} ({weight_str}, {enabled_str}, Category: {self.category})"
 
 
 class BaseRelaxableConstraint(BaseConstraint):
@@ -148,7 +274,6 @@ class BaseRelaxableConstraint(BaseConstraint):
         Args:
             level: The relaxation level
         """
-        # Ensure the relaxation level is within bounds
         self._relaxation_level = max(0, min(level, self._max_relaxation_level))
     
     @property
@@ -156,7 +281,7 @@ class BaseRelaxableConstraint(BaseConstraint):
         """Get the maximum possible relaxation level"""
         return self._max_relaxation_level
     
-    def get_relaxed_weight(self) -> float:
+    def get_relaxed_weight(self) -> Optional[float]:
         """
         Get the weight adjusted for the current relaxation level
         
@@ -167,25 +292,58 @@ class BaseRelaxableConstraint(BaseConstraint):
         Returns:
             The relaxed weight
         """
-        # If this is a hard constraint and the relaxation level is 0, it remains a hard constraint
-        if self.is_hard_constraint and self._relaxation_level == 0:
-            # For use in cost functions, hard constraints should have a very high weight
-            return 1_000_000
-        
-        # If this is a hard constraint and the relaxation level is > 0, convert to soft
+        if self.relaxation_level == 0:
+            return self.weight
+            
+        # If this is a hard constraint and relaxation level > 0,
+        # convert it to a soft constraint with a high weight
         if self.is_hard_constraint:
-            # Start with a high weight and reduce it based on the relaxation level
-            base_weight = 10_000
-            return base_weight * (1 - self._relaxation_level / (self._max_relaxation_level + 1))
+            # Start with a high weight and reduce it as relaxation level increases
+            return 10000 / (1 + self.relaxation_level)
+            
+        # For soft constraints, reduce the weight as relaxation level increases
+        return self.weight / (1 + self.relaxation_level)
+    
+    def create_relaxable_violation(
+        self,
+        message: str,
+        severity: ConstraintSeverity,
+        context: Optional[Dict[str, Any]] = None,
+        relaxation_info: Optional[Dict[str, Any]] = None
+    ) -> ConstraintViolation:
+        """
+        Create a constraint violation with relaxation information
         
-        # For soft constraints, reduce the weight based on the relaxation level
-        if self._weight is None:
-            return 0  # This should not happen, but just in case
+        Args:
+            message: The violation message
+            severity: The violation severity
+            context: Additional context information
+            relaxation_info: Information about the relaxation
+            
+        Returns:
+            A constraint violation with relaxation information
+        """
+        context_with_relaxation = context.copy() if context else {}
         
-        return self._weight * (1 - self._relaxation_level / (self._max_relaxation_level + 1))
+        # Add relaxation information to the context
+        if relaxation_info:
+            context_with_relaxation["relaxation"] = relaxation_info
+        else:
+            context_with_relaxation["relaxation"] = {
+                "current_level": self.relaxation_level,
+                "max_level": self.max_relaxation_level,
+                "original_weight": self.weight,
+                "relaxed_weight": self.get_relaxed_weight()
+            }
+            
+        return self.create_violation(
+            message=message,
+            severity=severity,
+            context=context_with_relaxation
+        )
     
     def __str__(self) -> str:
         """String representation of the relaxable constraint"""
         base_str = super().__str__()
-        relaxation_str = f", relaxation={self._relaxation_level}/{self._max_relaxation_level}"
-        return f"{base_str}{relaxation_str}"
+        relaxation_str = f"Relaxation: {self.relaxation_level}/{self.max_relaxation_level}"
+        return f"{base_str}, {relaxation_str}"

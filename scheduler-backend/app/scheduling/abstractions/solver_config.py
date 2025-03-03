@@ -10,7 +10,9 @@ from enum import Enum, auto
 from typing import Dict, Any, List, Optional, Set, Type, ClassVar, Union
 import copy
 import json
+import logging
 
+logger = logging.getLogger(__name__)
 
 class OptimizationLevel(Enum):
     """Optimization level for solvers"""
@@ -272,11 +274,14 @@ class SolverConfigurationBuilder:
     Builder for SolverConfiguration
     
     This class provides a fluent interface for building SolverConfiguration instances.
+    It includes preset configurations for common use cases and validates the configuration
+    as it's being built.
     """
     
     def __init__(self):
         """Initialize with default configuration"""
         self._config = SolverConfiguration()
+        self._validation_errors: List[str] = []
     
     def with_solver_type(self, solver_type: Union[SolverType, str]) -> 'SolverConfigurationBuilder':
         """
@@ -292,7 +297,8 @@ class SolverConfigurationBuilder:
             try:
                 solver_type = SolverType[solver_type.upper()]
             except KeyError:
-                raise ValueError(f"Invalid solver type: {solver_type}")
+                self._validation_errors.append(f"Invalid solver type: {solver_type}")
+                return self
         
         self._config.solver_type = solver_type
         return self
@@ -311,7 +317,8 @@ class SolverConfigurationBuilder:
             try:
                 level = OptimizationLevel[level.upper()]
             except KeyError:
-                raise ValueError(f"Invalid optimization level: {level}")
+                self._validation_errors.append(f"Invalid optimization level: {level}")
+                return self
         
         self._config.optimization_level = level
         return self
@@ -326,6 +333,9 @@ class SolverConfigurationBuilder:
         Returns:
             Self for method chaining
         """
+        if seconds <= 0:
+            self._validation_errors.append("Timeout must be greater than 0 seconds")
+        
         self._config.timeout_seconds = seconds
         return self
     
@@ -392,6 +402,9 @@ class SolverConfigurationBuilder:
         Returns:
             Self for method chaining
         """
+        if key not in SolverConfiguration.DEFAULT_WEIGHTS:
+            self._validation_errors.append(f"Unknown weight key: {key}")
+        
         self._config.weights[key] = value
         return self
     
@@ -405,7 +418,8 @@ class SolverConfigurationBuilder:
         Returns:
             Self for method chaining
         """
-        self._config.weights.update(weights)
+        for key, value in weights.items():
+            self.with_weight(key, value)
         return self
     
     def with_ga_params(self, population_size: int, mutation_rate: float) -> 'SolverConfigurationBuilder':
@@ -419,6 +433,12 @@ class SolverConfigurationBuilder:
         Returns:
             Self for method chaining
         """
+        if population_size <= 0:
+            self._validation_errors.append("Population size must be greater than 0")
+        
+        if not 0 <= mutation_rate <= 1:
+            self._validation_errors.append("Mutation rate must be between 0 and 1")
+        
         self._config.population_size = population_size
         self._config.mutation_rate = mutation_rate
         return self
@@ -449,12 +469,163 @@ class SolverConfigurationBuilder:
         self._config.parallel_execution = enable
         return self
     
+    # New methods to enhance the builder
+    
+    def for_or_tools_strategy(self) -> 'SolverConfigurationBuilder':
+        """
+        Configure for the OR-Tools strategy
+        
+        Returns:
+            Self for method chaining
+        """
+        self.with_solver_type(SolverType.OR_TOOLS)
+        return self
+    
+    def for_genetic_strategy(self) -> 'SolverConfigurationBuilder':
+        """
+        Configure for the Genetic Algorithm strategy
+        
+        Returns:
+            Self for method chaining
+        """
+        self.with_solver_type(SolverType.GENETIC)
+        self.with_ga_params(population_size=100, mutation_rate=0.1)
+        return self
+    
+    def for_hybrid_strategy(self) -> 'SolverConfigurationBuilder':
+        """
+        Configure for the Hybrid strategy
+        
+        Returns:
+            Self for method chaining
+        """
+        self.with_solver_type(SolverType.HYBRID)
+        return self
+    
+    def optimize_for_speed(self) -> 'SolverConfigurationBuilder':
+        """
+        Optimize configuration for speed over quality
+        
+        Returns:
+            Self for method chaining
+        """
+        self.with_optimization_level(OptimizationLevel.MINIMAL)
+        self.with_timeout(10)
+        self.with_distribution_optimization(False)
+        self.with_workload_balancing(False)
+        return self
+    
+    def optimize_for_quality(self) -> 'SolverConfigurationBuilder':
+        """
+        Optimize configuration for quality over speed
+        
+        Returns:
+            Self for method chaining
+        """
+        self.with_optimization_level(OptimizationLevel.INTENSIVE)
+        self.with_timeout(300)
+        if self._config.solver_type == SolverType.GENETIC:
+            self.with_ga_params(population_size=200, mutation_rate=0.1)
+        return self
+    
+    def adapt_to_problem_size(self, request_size: int) -> 'SolverConfigurationBuilder':
+        """
+        Adapt configuration based on problem size
+        
+        Args:
+            request_size: Size metric for the problem (e.g., number of classes)
+            
+        Returns:
+            Self for method chaining
+        """
+        if request_size < 10:
+            # Small problem - use OR-Tools with intensive optimization
+            self.for_or_tools_strategy()
+            self.with_optimization_level(OptimizationLevel.INTENSIVE)
+        elif request_size < 50:
+            # Medium problem - use Hybrid with standard optimization
+            self.for_hybrid_strategy()
+            self.with_optimization_level(OptimizationLevel.STANDARD)
+        else:
+            # Large problem - use Genetic with minimal optimization
+            self.for_genetic_strategy()
+            self.with_optimization_level(OptimizationLevel.MINIMAL)
+        return self
+    
+    def validate(self) -> List[str]:
+        """
+        Validate the configuration being built
+        
+        Returns:
+            List of validation errors, empty if valid
+        """
+        # Reset validation errors
+        self._validation_errors = []
+        
+        # Perform validation
+        self._validate_timeout()
+        self._validate_genetic_params()
+        self._validate_weights()
+        
+        # Return all validation errors
+        return self._validation_errors
+    
+    def _validate_timeout(self) -> None:
+        """Validate timeout settings"""
+        if self._config.timeout_seconds <= 0:
+            self._validation_errors.append("Timeout must be greater than 0 seconds")
+    
+    def _validate_genetic_params(self) -> None:
+        """Validate genetic algorithm parameters"""
+        if self._config.solver_type in (SolverType.GENETIC, SolverType.HYBRID):
+            if self._config.population_size <= 0:
+                self._validation_errors.append("Population size must be greater than 0")
+            if not 0 <= self._config.mutation_rate <= 1:
+                self._validation_errors.append("Mutation rate must be between 0 and 1")
+    
+    def _validate_weights(self) -> None:
+        """Validate weights"""
+        for key in self._config.weights:
+            if key not in self._config.DEFAULT_WEIGHTS:
+                self._validation_errors.append(f"Unknown weight key: {key}")
+    
     def build(self) -> SolverConfiguration:
         """
         Build the configuration
         
+        Validates the configuration before building it. If there are validation errors,
+        a ValueError is raised.
+        
         Returns:
             The built SolverConfiguration instance
+            
+        Raises:
+            ValueError: If the configuration is invalid
         """
+        # Validate the configuration
+        errors = self.validate()
+        if errors:
+            raise ValueError(f"Invalid configuration: {'; '.join(errors)}")
+        
+        # Create a copy to avoid modifying the builder's instance
+        return copy.deepcopy(self._config)
+    
+    def build_or_default(self) -> SolverConfiguration:
+        """
+        Build the configuration or return a valid default
+        
+        Similar to build(), but returns a valid default configuration if
+        the current configuration is invalid instead of raising an exception.
+        
+        Returns:
+            The built SolverConfiguration instance or a default instance
+        """
+        # Validate the configuration
+        errors = self.validate()
+        if errors:
+            # Log the errors and return a default configuration
+            logger.warning(f"Configuration validation failed: {'; '.join(errors)}. Using default configuration.")
+            return SolverConfiguration.create_standard()
+        
         # Create a copy to avoid modifying the builder's instance
         return copy.deepcopy(self._config)

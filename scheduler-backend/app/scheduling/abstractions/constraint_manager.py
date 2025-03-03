@@ -182,18 +182,34 @@ class EnhancedConstraintManager:
     Enhanced constraint manager for applying and validating constraints
     
     This class manages a collection of constraints and provides methods
-    for applying and validating them.
+    for applying and validating them. It utilizes the ConstraintFactory
+    for constraint creation and management.
     """
     
-    def __init__(self):
-        """Initialize the manager"""
+    def __init__(self, constraint_factory=None):
+        """
+        Initialize the manager
+        
+        Args:
+            constraint_factory: Optional constraint factory to use
+                If not provided, the global factory will be used
+        """
         self._constraints: List[Constraint] = []
         self._registry = ConstraintRegistry()
+        
+        # Use the provided factory or get the global one
+        from .constraint_factory import get_constraint_factory
+        self._factory = constraint_factory or get_constraint_factory()
     
     @property
     def registry(self) -> ConstraintRegistry:
         """Get the constraint registry"""
         return self._registry
+    
+    @property
+    def factory(self):
+        """Get the constraint factory"""
+        return self._factory
     
     def add_constraint(self, constraint: Constraint) -> None:
         """
@@ -202,7 +218,58 @@ class EnhancedConstraintManager:
         Args:
             constraint: The constraint to add
         """
+        # Remove any existing constraint with the same name
+        self.remove_constraint(constraint.name)
         self._constraints.append(constraint)
+        logger.debug(f"Added constraint: {constraint.name}")
+    
+    def create_and_add_constraint(
+        self, 
+        name: str, 
+        config: Optional[Dict[str, Any]] = None
+    ) -> Optional[Constraint]:
+        """
+        Create a constraint by name and add it to the manager
+        
+        Args:
+            name: The name of the constraint to create
+            config: Optional configuration for the constraint
+            
+        Returns:
+            The created constraint, or None if creation failed
+        """
+        constraint = self._factory.create_constraint(name, config)
+        if constraint:
+            self.add_constraint(constraint)
+            return constraint
+        return None
+    
+    def create_and_add_constraints_by_category(
+        self, 
+        category: str, 
+        config: Optional[Dict[str, Dict[str, Any]]] = None
+    ) -> List[Constraint]:
+        """
+        Create and add all constraints in a category
+        
+        Args:
+            category: The category of constraints to create
+            config: Optional configuration for the constraints,
+                   keyed by constraint name
+                
+        Returns:
+            The list of created constraints
+        """
+        constraints = []
+        constraint_names = self._factory.get_constraint_names_by_category(category)
+        
+        for name in constraint_names:
+            constraint_config = config.get(name, {}) if config else {}
+            constraint = self.create_and_add_constraint(name, constraint_config)
+            if constraint:
+                constraints.append(constraint)
+                
+        return constraints
     
     def remove_constraint(self, name: str) -> None:
         """
@@ -211,7 +278,10 @@ class EnhancedConstraintManager:
         Args:
             name: The name of the constraint to remove
         """
+        initial_count = len(self._constraints)
         self._constraints = [c for c in self._constraints if c.name != name]
+        if len(self._constraints) < initial_count:
+            logger.debug(f"Removed constraint: {name}")
     
     def get_constraint(self, name: str) -> Optional[Constraint]:
         """
@@ -246,6 +316,43 @@ class EnhancedConstraintManager:
         """
         return [c for c in self._constraints if c.enabled]
     
+    def get_constraints_by_category(self, category: str) -> List[Constraint]:
+        """
+        Get all constraints in a category
+        
+        Args:
+            category: The category to filter by
+            
+        Returns:
+            List of constraints in the category
+        """
+        # Get all constraints that are registered in this category
+        constraint_names = set(self._factory.get_constraint_names_by_category(category))
+        return [c for c in self._constraints if c.name in constraint_names]
+    
+    def get_enabled_constraints_by_category(self, category: str) -> List[Constraint]:
+        """
+        Get all enabled constraints in a category
+        
+        Args:
+            category: The category to filter by
+            
+        Returns:
+            List of enabled constraints in the category
+        """
+        constraints = self.get_constraints_by_category(category)
+        return [c for c in constraints if c.enabled]
+    
+    def validate_constraint_compatibility(self) -> List[str]:
+        """
+        Validate that all enabled constraints are compatible with each other
+        
+        Returns:
+            List of error messages, empty if all constraints are compatible
+        """
+        enabled_constraint_names = [c.name for c in self.get_enabled_constraints()]
+        return self._factory.validate_constraints_compatibility(enabled_constraint_names)
+    
     def apply_all(self, context: Any) -> None:
         """
         Apply all enabled constraints to the context
@@ -256,10 +363,17 @@ class EnhancedConstraintManager:
         Args:
             context: The context to apply constraints to
         """
+        # Validate constraint compatibility first
+        compatibility_errors = self.validate_constraint_compatibility()
+        if compatibility_errors:
+            for error in compatibility_errors:
+                logger.warning(f"Constraint compatibility issue: {error}")
+        
         # First apply hard constraints (weight is None)
         for constraint in self.get_enabled_constraints():
             if constraint.weight is None:
                 try:
+                    logger.debug(f"Applying hard constraint: {constraint.name}")
                     constraint.apply(context)
                 except Exception as e:
                     logger.error(f"Error applying constraint {constraint.name}: {e}")
@@ -268,6 +382,7 @@ class EnhancedConstraintManager:
         for constraint in self.get_enabled_constraints():
             if constraint.weight is not None:
                 try:
+                    logger.debug(f"Applying soft constraint: {constraint.name} (weight={constraint.weight})")
                     constraint.apply(context)
                 except Exception as e:
                     logger.error(f"Error applying constraint {constraint.name}: {e}")
@@ -275,7 +390,8 @@ class EnhancedConstraintManager:
     def validate_all(
         self, 
         assignments: List[Dict[str, Any]], 
-        context: Any
+        context: Any,
+        fail_fast: bool = False
     ) -> Tuple[bool, List[ConstraintViolation]]:
         """
         Validate assignments against all enabled constraints
@@ -286,6 +402,7 @@ class EnhancedConstraintManager:
         Args:
             assignments: The assignments to validate
             context: The context for validation
+            fail_fast: If True, stops validation at the first critical violation
             
         Returns:
             A tuple of (is_valid, violations)
@@ -293,7 +410,81 @@ class EnhancedConstraintManager:
         all_violations: List[ConstraintViolation] = []
         is_valid = True
         
-        for constraint in self.get_enabled_constraints():
+        # Validate constraint compatibility first
+        compatibility_errors = self.validate_constraint_compatibility()
+        for error in compatibility_errors:
+            all_violations.append(
+                ConstraintViolation(
+                    constraint_name="constraint_compatibility",
+                    message=error,
+                    severity=ConstraintSeverity.WARNING
+                )
+            )
+        
+        # First validate hard constraints
+        hard_constraints = [c for c in self.get_enabled_constraints() if c.weight is None]
+        for constraint in hard_constraints:
+            try:
+                violations = constraint.validate(assignments, context)
+                all_violations.extend(violations)
+                
+                # Check if there are any critical violations
+                for violation in violations:
+                    if violation.severity == ConstraintSeverity.CRITICAL:
+                        is_valid = False
+                        if fail_fast:
+                            return is_valid, all_violations
+                        
+            except Exception as e:
+                logger.error(f"Error validating constraint {constraint.name}: {e}")
+                all_violations.append(
+                    ConstraintViolation(
+                        constraint_name=constraint.name,
+                        message=f"Error during validation: {str(e)}",
+                        severity=ConstraintSeverity.ERROR
+                    )
+                )
+                
+        # Then validate soft constraints
+        soft_constraints = [c for c in self.get_enabled_constraints() if c.weight is not None]
+        for constraint in soft_constraints:
+            try:
+                violations = constraint.validate(assignments, context)
+                all_violations.extend(violations)
+                        
+            except Exception as e:
+                logger.error(f"Error validating constraint {constraint.name}: {e}")
+                all_violations.append(
+                    ConstraintViolation(
+                        constraint_name=constraint.name,
+                        message=f"Error during validation: {str(e)}",
+                        severity=ConstraintSeverity.ERROR
+                    )
+                )
+        
+        return is_valid, all_violations
+    
+    def validate_by_category(
+        self,
+        category: str,
+        assignments: List[Dict[str, Any]],
+        context: Any
+    ) -> Tuple[bool, List[ConstraintViolation]]:
+        """
+        Validate assignments against all enabled constraints in a category
+        
+        Args:
+            category: The category of constraints to validate
+            assignments: The assignments to validate
+            context: The context for validation
+            
+        Returns:
+            A tuple of (is_valid, violations)
+        """
+        all_violations: List[ConstraintViolation] = []
+        is_valid = True
+        
+        for constraint in self.get_enabled_constraints_by_category(category):
             try:
                 violations = constraint.validate(assignments, context)
                 all_violations.extend(violations)
