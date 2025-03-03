@@ -11,6 +11,7 @@ import logging
 from ...models import ScheduleRequest
 from .solver_strategy import SolverStrategy
 from .solver_config import SolverConfiguration, SolverType
+from .configuration_builder import ConfigurationBuilder, configure
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +79,52 @@ class SolverFactory:
             strategy: The strategy to configure
             config: The configuration
         """
-        # This is a hook for subclasses to customize strategy configuration
-        pass
+        # Convert the configuration to a dictionary for the strategy
+        config_dict = {
+            'solver_type': config.solver_type.name if hasattr(config.solver_type, 'name') else config.solver_type,
+            'optimization_level': config.optimization_level.name if hasattr(config.optimization_level, 'name') else config.optimization_level,
+            'timeout_seconds': config.timeout_seconds,
+            'max_iterations': config.max_iterations,
+            'enable_relaxation': config.enable_relaxation,
+            'relaxation_level': config.relaxation_level.name if hasattr(config.relaxation_level, 'name') else config.relaxation_level,
+            'weights': config.weights,
+            'options': config.options
+        }
+        
+        # Configure the strategy with the dictionary
+        strategy.configure(config_dict)
+    
+    def create_strategy_with_builder(
+        self,
+        name: str,
+        builder_fn=None
+    ) -> Optional[SolverStrategy]:
+        """
+        Create a solver strategy using a builder function
+        
+        Args:
+            name: The strategy name
+            builder_fn: Optional function that takes a ConfigurationBuilder and returns it configured
+            
+        Returns:
+            A new solver strategy instance, or None if not found
+        """
+        if name not in self._strategies:
+            logger.warning(f"Unknown solver strategy: {name}")
+            return None
+        
+        # Create a new builder with default configuration
+        builder = configure()
+        
+        # Apply the builder function if provided
+        if builder_fn:
+            builder = builder_fn(builder)
+        
+        # Build the configuration
+        config = builder.build()
+        
+        # Create the strategy
+        return self.create_strategy(name, config)
     
     def create_strategy_for_request(
         self,
@@ -99,167 +144,74 @@ class SolverFactory:
         Returns:
             The best solver strategy for the request, or None if no strategy can solve it
         """
-        # Use the solver type from the configuration
-        if config.solver_type == SolverType.OR_TOOLS:
-            strategy_name = "or_tools"
-        elif config.solver_type == SolverType.GENETIC:
-            strategy_name = "genetic"
-        elif config.solver_type == SolverType.HYBRID:
-            strategy_name = "hybrid"
-        else:  # META or any other
-            # For META, we need to intelligently select the best strategy
-            return self._select_best_strategy(request, config)
+        # Determine the strategy name from the configuration
+        strategy_name = None
         
-        # Create the strategy
-        strategy = self.create_strategy(strategy_name, config)
-        if not strategy:
-            logger.warning(
-                f"Failed to create {strategy_name} strategy, "
-                f"falling back to best available strategy"
-            )
-            return self._select_best_strategy(request, config)
-        
-        # Check if the strategy can solve the request
-        can_solve, reason = strategy.can_solve(request)
-        if not can_solve:
-            logger.warning(
-                f"Strategy {strategy_name} cannot solve the request: {reason}. "
-                f"Falling back to best available strategy"
-            )
-            return self._select_best_strategy(request, config)
-        
-        return strategy
-    
-    def _select_best_strategy(
-        self,
-        request: ScheduleRequest,
-        config: SolverConfiguration
-    ) -> Optional[SolverStrategy]:
-        """
-        Select the best strategy for a request
-        
-        This method evaluates each registered strategy and selects the best one
-        based on capabilities and suitability for the request.
-        
-        Args:
-            request: The schedule request
-            config: The solver configuration
-            
-        Returns:
-            The best solver strategy for the request, or None if no strategy can solve it
-        """
-        # Algorithm to select the best strategy:
-        # 1. Start with all registered strategies
-        # 2. Filter out strategies that cannot solve the request
-        # 3. Score remaining strategies based on capabilities match
-        # 4. Return the highest scoring strategy
-        
-        candidates = []
-        for name, strategy_class in self._strategies.items():
-            # Create the strategy
-            strategy = self.create_strategy(name, config)
-            if not strategy:
-                continue
-            
-            # Check if the strategy can solve the request
-            can_solve, reason = strategy.can_solve(request)
-            if not can_solve:
-                logger.debug(f"Strategy {name} cannot solve the request: {reason}")
-                continue
-            
-            # Add to candidates
-            candidates.append((strategy, self._calculate_strategy_score(strategy, request, config)))
-        
-        # Sort candidates by score (descending)
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        
-        # Return the highest scoring strategy, or None if no candidates
-        if not candidates:
-            logger.error("No suitable solver strategy found for the request")
-            return None
-        
-        selected_strategy, score = candidates[0]
-        logger.info(
-            f"Selected strategy {selected_strategy.name} with score {score} "
-            f"from {len(candidates)} candidates"
-        )
-        return selected_strategy
-    
-    def _calculate_strategy_score(
-        self,
-        strategy: SolverStrategy,
-        request: ScheduleRequest,
-        config: SolverConfiguration
-    ) -> float:
-        """
-        Calculate a score for a strategy based on its suitability for the request
-        
-        The score is based on the strategy's capabilities and how well they match
-        the requirements of the request and configuration.
-        
-        Args:
-            strategy: The strategy to score
-            request: The schedule request
-            config: The solver configuration
-            
-        Returns:
-            A score between 0 and 100, where higher is better
-        """
-        # This is a simplified scoring algorithm
-        # A real implementation would consider many factors
-        
-        # Start with a base score
-        score = 50.0
-        
-        # Get the strategy's capabilities
-        capabilities = strategy.get_capabilities()
-        
-        # Score based on optimization level
-        if "intensive_optimization" in capabilities and config.optimization_level.name == "INTENSIVE":
-            score += 20
-        elif "standard_optimization" in capabilities and config.optimization_level.name == "STANDARD":
-            score += 15
-        elif "minimal_optimization" in capabilities and config.optimization_level.name == "MINIMAL":
-            score += 10
-        
-        # Score based on request size
-        num_classes = len(request.classes)
-        num_instructors = len(set(a.instructorId for a in request.instructorAvailability))
-        
-        if num_classes > 100 or num_instructors > 20:
-            # Large problem
-            if "large_scale" in capabilities:
-                score += 20
+        if hasattr(config, 'solver_type') and config.solver_type:
+            strategy_type = config.solver_type
+            if hasattr(strategy_type, 'name'):
+                strategy_name = strategy_type.name.lower()
             else:
-                score -= 20
-        elif num_classes > 50 or num_instructors > 10:
-            # Medium problem
-            if "medium_scale" in capabilities:
-                score += 15
-            elif "large_scale" in capabilities:
-                score += 10
-            else:
-                score -= 10
-        else:
-            # Small problem
-            score += 10
+                strategy_name = str(strategy_type).lower()
         
-        # Score based on specific features
-        if config.enable_relaxation and "constraint_relaxation" in capabilities:
-            score += 10
-        if config.enable_distribution_optimization and "distribution_optimization" in capabilities:
-            score += 10
-        if config.enable_workload_balancing and "workload_balancing" in capabilities:
-            score += 10
+        # If no strategy specified in configuration, evaluate available strategies
+        if not strategy_name or strategy_name not in self._strategies:
+            logger.info(f"No specific strategy requested, evaluating available strategies")
+            
+            # Find strategies that can solve the request
+            capable_strategies = []
+            for name, strategy_class in self._strategies.items():
+                try:
+                    # Create a temporary instance to check if it can solve the request
+                    temp_strategy = strategy_class(name)
+                    can_solve, reason = temp_strategy.can_solve(request)
+                    
+                    if can_solve:
+                        capable_strategies.append((name, strategy_class))
+                    else:
+                        logger.debug(f"Strategy {name} cannot solve the request: {reason}")
+                except Exception as e:
+                    logger.warning(f"Error evaluating strategy {name}: {e}")
+            
+            # If no capable strategies found, return None
+            if not capable_strategies:
+                logger.warning(f"No strategy found that can solve the request")
+                return None
+            
+            # Select the first capable strategy (could be improved with scoring)
+            strategy_name, strategy_class = capable_strategies[0]
+            logger.info(f"Selected strategy {strategy_name} for the request")
         
-        # Cap the score between 0 and 100
-        return max(0, min(100, score))
+        # Create the strategy with the given configuration
+        return self.create_strategy(strategy_name, config)
     
     def get_strategy_names(self) -> List[str]:
         """
         Get the names of all registered strategies
         
         Returns:
-            List of strategy names
+            A list of strategy names
         """
         return list(self._strategies.keys())
+    
+    def get_strategy_capabilities(self, name: str) -> Set[str]:
+        """
+        Get the capabilities of a strategy
+        
+        Args:
+            name: The strategy name
+            
+        Returns:
+            A set of capability strings, or an empty set if not found
+        """
+        if name not in self._strategies:
+            logger.warning(f"Unknown solver strategy: {name}")
+            return set()
+        
+        strategy_class = self._strategies[name]
+        try:
+            strategy = strategy_class(name)
+            return strategy.get_capabilities()
+        except Exception as e:
+            logger.error(f"Error getting capabilities for {name}: {e}")
+            return set()

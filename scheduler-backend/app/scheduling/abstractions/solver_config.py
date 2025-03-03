@@ -20,6 +20,10 @@ class OptimizationLevel(Enum):
     STANDARD = auto()   # Balanced performance and quality
     INTENSIVE = auto()  # Higher quality, slower
     MAXIMUM = auto()    # Best possible solution, very slow
+    # Aliases to support tests
+    BALANCED = STANDARD
+    SPEED = MINIMAL
+    QUALITY = INTENSIVE
 
 
 class SolverType(Enum):
@@ -28,6 +32,7 @@ class SolverType(Enum):
     GENETIC = auto()    # Genetic algorithm solver
     HYBRID = auto()     # Hybrid solver (combines multiple approaches)
     META = auto()       # Meta-optimizer that selects the best solver
+    UNIFIED = auto()    # Unified solver combining multiple approaches
 
 
 @dataclass
