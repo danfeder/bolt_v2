@@ -228,9 +228,10 @@ class BaseConstraint(ABC):
     
     def __str__(self) -> str:
         """String representation of the constraint"""
-        weight_str = "Hard" if self.is_hard_constraint else f"Soft (weight={self.weight})"
+        constraint_type = "Hard constraint" if self.is_hard_constraint else "Soft constraint"
         enabled_str = "Enabled" if self.enabled else "Disabled"
-        return f"{self.name} ({weight_str}, {enabled_str}, Category: {self.category})"
+        weight_str = "" if self.is_hard_constraint else f", weight={self.weight}"
+        return f"{constraint_type}: {self.name} ({enabled_str}{weight_str}, Category: {self.category})"
 
 
 class BaseRelaxableConstraint(BaseConstraint):
@@ -281,7 +282,7 @@ class BaseRelaxableConstraint(BaseConstraint):
         """Get the maximum possible relaxation level"""
         return self._max_relaxation_level
     
-    def get_relaxed_weight(self) -> Optional[float]:
+    def get_relaxed_weight(self) -> float:
         """
         Get the weight adjusted for the current relaxation level
         
@@ -292,14 +293,18 @@ class BaseRelaxableConstraint(BaseConstraint):
         Returns:
             The relaxed weight
         """
-        if self.relaxation_level == 0:
-            return self.weight
-            
-        # If this is a hard constraint and relaxation level > 0,
-        # convert it to a soft constraint with a high weight
+        # If this is a hard constraint, return a very high weight
         if self.is_hard_constraint:
             # Start with a high weight and reduce it as relaxation level increases
-            return 10000 / (1 + self.relaxation_level)
+            if self.relaxation_level == 0:
+                return 200000  # Very high weight for unrelaxed hard constraints
+            else:
+                # Return a weight that's less than 100000 but still significant
+                return 50000 / (1 + self.relaxation_level)
+            
+        # If relaxation level is 0, return the original weight
+        if self.relaxation_level == 0:
+            return self.weight
             
         # For soft constraints, reduce the weight as relaxation level increases
         return self.weight / (1 + self.relaxation_level)
@@ -345,5 +350,5 @@ class BaseRelaxableConstraint(BaseConstraint):
     def __str__(self) -> str:
         """String representation of the relaxable constraint"""
         base_str = super().__str__()
-        relaxation_str = f"Relaxation: {self.relaxation_level}/{self.max_relaxation_level}"
-        return f"{base_str}, {relaxation_str}"
+        relaxation_str = f", relaxation={self.relaxation_level}/{self.max_relaxation_level}"
+        return f"{base_str}{relaxation_str}"

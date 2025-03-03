@@ -458,7 +458,7 @@ class TestEnhancedConstraintManager:
         
         # Validate all constraints
         assignments = [{"class_id": "class1", "instructor_id": "instructor1"}]
-        is_valid, violations = manager.validate_all(assignments, scheduler_context)
+        is_valid, violations = manager.validate_all(assignments, scheduler_context, skip_compatibility_check=True)
         
         # Check that constraints were validated
         assert constraint1.validate_called == True

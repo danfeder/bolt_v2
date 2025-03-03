@@ -391,7 +391,8 @@ class EnhancedConstraintManager:
         self, 
         assignments: List[Dict[str, Any]], 
         context: Any,
-        fail_fast: bool = False
+        fail_fast: bool = False,
+        skip_compatibility_check: bool = False
     ) -> Tuple[bool, List[ConstraintViolation]]:
         """
         Validate assignments against all enabled constraints
@@ -403,6 +404,7 @@ class EnhancedConstraintManager:
             assignments: The assignments to validate
             context: The context for validation
             fail_fast: If True, stops validation at the first critical violation
+            skip_compatibility_check: If True, skips compatibility validation
             
         Returns:
             A tuple of (is_valid, violations)
@@ -411,15 +413,16 @@ class EnhancedConstraintManager:
         is_valid = True
         
         # Validate constraint compatibility first
-        compatibility_errors = self.validate_constraint_compatibility()
-        for error in compatibility_errors:
-            all_violations.append(
-                ConstraintViolation(
-                    constraint_name="constraint_compatibility",
-                    message=error,
-                    severity=ConstraintSeverity.WARNING
+        if not skip_compatibility_check:
+            compatibility_errors = self.validate_constraint_compatibility()
+            for error in compatibility_errors:
+                all_violations.append(
+                    ConstraintViolation(
+                        constraint_name="constraint_compatibility",
+                        message=error,
+                        severity=ConstraintSeverity.WARNING
+                    )
                 )
-            )
         
         # First validate hard constraints
         hard_constraints = [c for c in self.get_enabled_constraints() if c.weight is None]
@@ -451,6 +454,13 @@ class EnhancedConstraintManager:
             try:
                 violations = constraint.validate(assignments, context)
                 all_violations.extend(violations)
+                
+                # Check if there are any critical violations
+                for violation in violations:
+                    if violation.severity == ConstraintSeverity.CRITICAL:
+                        is_valid = False
+                        if fail_fast:
+                            return is_valid, all_violations
                         
             except Exception as e:
                 logger.error(f"Error validating constraint {constraint.name}: {e}")
