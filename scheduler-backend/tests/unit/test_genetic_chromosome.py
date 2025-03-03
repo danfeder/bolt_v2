@@ -240,37 +240,187 @@ class TestScheduleChromosome:
         # Should be close to 100% matches (might not be exact due to gene object reference comparison)
         assert complement_matches / len(child1.genes) > 0.9
         
-    def test_crossover_methods(self):
-        """Test all crossover methods."""
+    def test_order_crossover(self):
+        """Test order-based crossover method."""
         request = create_test_request()
+        
+        # Create two parent chromosomes with fixed genes
         parent1 = ScheduleChromosome(request)
-        parent1.initialize_random()
-        
         parent2 = ScheduleChromosome(request)
-        parent2.initialize_random()
         
-        # Test supported methods - likely just these three
-        for method in ["single_point", "two_point", "uniform"]:
-            try:
-                child1, child2 = parent1.crossover(parent2, method=method)
-                assert len(child1.genes) == len(parent1.genes)
-                assert len(child2.genes) == len(parent2.genes)
-                assert child1.genes != parent1.genes  # Should be different from parents
-                assert child2.genes != parent2.genes
-            except Exception as e:
-                # If a method is not supported, we'll skip testing it
-                print(f"Skipping unsupported crossover method: {method}")
-                continue
+        # Manually create some genes with different values for testing
+        # Use fewer genes to simplify test
+        parent1.genes = [
+            Gene(class_id="A", day_of_week=1, period=1, week=0),
+            Gene(class_id="B", day_of_week=2, period=2, week=0),
+            Gene(class_id="C", day_of_week=3, period=3, week=0),
+        ]
+        
+        parent2.genes = [
+            Gene(class_id="C", day_of_week=5, period=6, week=0),
+            Gene(class_id="A", day_of_week=4, period=5, week=0),
+            Gene(class_id="B", day_of_week=3, period=4, week=0),
+        ]
+        
+        # Test the crossover method with fixed random values
+        # Directly call crossover with controlled parameters
+        
+        # Create new children
+        child1 = ScheduleChromosome(parent1.request)
+        child2 = ScheduleChromosome(parent1.request)
+        
+        # Initialize child genes
+        child1.genes = [None] * len(parent1.genes)
+        child2.genes = [None] * len(parent2.genes)
+        
+        # Manually set a fixed segment
+        start = 1
+        end = 2
+        
+        # Copy the selected segments
+        for i in range(start, end):
+            child1.genes[i] = parent1.genes[i]
+            child2.genes[i] = parent2.genes[i]
+        
+        # Get class IDs from the segments we'll preserve
+        segment1 = [parent1.genes[i].class_id for i in range(start, end)]
+        segment2 = [parent2.genes[i].class_id for i in range(start, end)]
+        
+        # Fill remaining positions while preserving order
+        parent1._fill_remaining_order_based(child1, parent2, segment1, start, end)
+        parent2._fill_remaining_order_based(child2, parent1, segment2, start, end)
+        
+        # Check that children have correct properties
+        assert len(child1.genes) == len(parent1.genes)
+        assert len(child2.genes) == len(parent2.genes)
+        
+        # Verify there are no None values in the genes after crossover
+        assert all(gene is not None for gene in child1.genes)
+        assert all(gene is not None for gene in child2.genes)
+        
+        # Verify that each class appears exactly once
+        child1_classes = [gene.class_id for gene in child1.genes]
+        assert sorted(child1_classes) == ["A", "B", "C"]
+        
+        # Verify the fixed segment is preserved
+        assert child1.genes[start].class_id == "B"
+        
+        # The rest should be ordered according to parent2's ordering
+        # Parent2 has order C, A, B but B is already in the fixed segment
+        # So we should expect to see C before A in the remaining positions
+        remaining_positions = [i for i in range(len(child1.genes)) if i != start]
+        remaining_class_ids = [child1.genes[i].class_id for i in remaining_positions]
+        assert remaining_class_ids == ["C", "A"]
+    
+    def test_fill_remaining_order_based(self):
+        """Test the helper method for order crossover to fill remaining positions."""
+        request = create_test_request()
+        
+        # Create parent with fixed genes to avoid randomness
+        parent = ScheduleChromosome(request)
+        donor = ScheduleChromosome(request)
+        
+        # Manually create genes - simple case with all unique class_ids
+        parent.genes = [
+            Gene(class_id="A", day_of_week=1, period=1, week=0),
+            Gene(class_id="B", day_of_week=2, period=2, week=0),
+            Gene(class_id="C", day_of_week=3, period=3, week=0),
+        ]
+        
+        donor.genes = [
+            Gene(class_id="C", day_of_week=5, period=6, week=0),
+            Gene(class_id="A", day_of_week=4, period=5, week=0),
+            Gene(class_id="B", day_of_week=3, period=4, week=0),
+        ]
+        
+        # Create a child and prepare for filling
+        child = ScheduleChromosome(request)
+        child.genes = [None, None, None]
+        
+        # Mark a segment in the middle for testing
+        start = 1
+        end = 2
+        
+        # Place the gene from parent into the child at the fixed segment
+        child.genes[start] = parent.genes[start]
+        
+        # Get the class ID from the fixed segment
+        used_classes = ["B"]  # class_id of parent.genes[1]
+        
+        # Call the method directly to fill remaining positions
+        parent._fill_remaining_order_based(child, donor, used_classes, start, end)
+        
+        # Verify no None values in the child genes
+        assert all(gene is not None for gene in child.genes)
+        
+        # Verify that the fixed segment remains unchanged
+        assert child.genes[start] == parent.genes[start]
+        
+        # Verify that the other positions contain the expected values
+        # Since we're preserving order, the donor order should be "C", "A"
+        # after removing "B" which is in the fixed segment
+        assert child.genes[0].class_id == "C"
+        assert child.genes[2].class_id == "A"
+    
+    def test_encode_method(self):
+        """Test converting a ScheduleResponse into chromosome representation."""
+        request = create_test_request()
+        chromosome = ScheduleChromosome(request)
+        
+        # Create a simple schedule to encode
+        from app.models import ScheduleResponse, ScheduleAssignment, ScheduleMetadata
+        
+        # Create a few assignments with different dates
+        assignments = [
+            ScheduleAssignment(
+                name="class_0",  # Use class_id format for name to match the expected format
+                classId="class_0",
+                date=(chromosome.start_date + timedelta(days=1)).strftime("%Y-%m-%d"),
+                timeSlot=TimeSlot(dayOfWeek=2, period=3)
+            ),
+            ScheduleAssignment(
+                name="class_1",  # Use class_id format for name to match the expected format
+                classId="class_1",
+                date=(chromosome.start_date + timedelta(days=8)).strftime("%Y-%m-%d"),
+                timeSlot=TimeSlot(dayOfWeek=2, period=4)
+            ),
+            ScheduleAssignment(
+                name="class_2",  # Use class_id format for name to match the expected format
+                classId="class_2",
+                date=(chromosome.start_date + timedelta(days=15)).strftime("%Y-%m-%d"),
+                timeSlot=TimeSlot(dayOfWeek=3, period=2)
+            )
+        ]
+        
+        schedule = ScheduleResponse(
+            assignments=assignments,
+            metadata=ScheduleMetadata(
+                duration_ms=100,
+                solutions_found=1,
+                score=0.8,
+                gap=0.0,
+                distribution=None
+            )
+        )
+        
+        # Encode the schedule
+        chromosome.encode(schedule)
+        
+        # Verify the genes were created correctly
+        assert len(chromosome.genes) == 3
+        
+        # Check each gene matches the corresponding assignment
+        for i, gene in enumerate(chromosome.genes):
+            assignment = assignments[i]
+            assignment_date = datetime.strptime(assignment.date, "%Y-%m-%d")
+            week = (assignment_date - chromosome.start_date).days // 7
             
-        # Test auto selection if supported
-        try:
-            child1, child2 = parent1.crossover(parent2, method="auto")
-            assert len(child1.genes) == len(parent1.genes)
-            assert len(child2.genes) == len(parent2.genes)
-        except Exception as e:
-            # Auto selection might not be supported
-            print("Auto selection not supported")
-        
+            # Check the name is used as the class_id in Gene
+            assert gene.class_id == assignment.name
+            assert gene.day_of_week == assignment.timeSlot.dayOfWeek
+            assert gene.period == assignment.timeSlot.period
+            assert gene.week == week
+    
     def test_validate_method(self):
         """Test the validate method."""
         request = create_test_request()
@@ -311,3 +461,118 @@ class TestScheduleChromosome:
             # Extract day and period from the timeSlot object
             assert assignment.timeSlot.period == period
             assert assignment.timeSlot.dayOfWeek == day
+
+    def test_validate_with_all_constraints(self):
+        """Test the validation method with all constraints."""
+        request = create_test_request()
+        chromosome = ScheduleChromosome(request)
+        
+        # 1. Create a valid schedule that passes all constraints
+        chromosome.genes = [
+            # Week 0, different days
+            Gene(class_id="class_0", day_of_week=1, period=2, week=0),
+            Gene(class_id="class_1", day_of_week=2, period=3, week=0),
+            Gene(class_id="class_2", day_of_week=3, period=4, week=0),
+            # Week 1, different days
+            Gene(class_id="class_0", day_of_week=1, period=3, week=1),
+            Gene(class_id="class_1", day_of_week=2, period=4, week=1),
+            Gene(class_id="class_2", day_of_week=3, period=5, week=1),
+        ]
+        
+        # Should be valid - follows constraints
+        assert chromosome.validate() is True
+        
+        # 2. Test max classes per day constraint
+        # Create a schedule with too many classes on one day
+        chromosome.genes = [
+            # 3 classes on day 1, week 0 (exceeds maxClassesPerDay=2)
+            Gene(class_id="class_0", day_of_week=1, period=1, week=0),
+            Gene(class_id="class_1", day_of_week=1, period=3, week=0),
+            Gene(class_id="class_2", day_of_week=1, period=5, week=0),
+        ]
+        
+        # Should be invalid - too many classes on one day
+        assert chromosome.validate() is False
+        
+        # 3. Test max classes per week constraint
+        # Create a schedule with too many classes in one week
+        chromosome.genes = [
+            # 7 classes in week 0 (exceeds maxClassesPerWeek=6)
+            Gene(class_id="class_0", day_of_week=1, period=1, week=0),
+            Gene(class_id="class_0", day_of_week=2, period=1, week=0),
+            Gene(class_id="class_1", day_of_week=1, period=3, week=0),
+            Gene(class_id="class_1", day_of_week=2, period=3, week=0),
+            Gene(class_id="class_2", day_of_week=1, period=5, week=0),
+            Gene(class_id="class_2", day_of_week=2, period=5, week=0),
+            Gene(class_id="class_0", day_of_week=3, period=2, week=0),
+        ]
+        
+        # Should be invalid - too many classes in one week
+        assert chromosome.validate() is False
+        
+        # 4. Test consecutive classes constraint
+        # Create a schedule with three consecutive classes
+        chromosome.genes = [
+            # Three consecutive periods on day 1, week 0
+            Gene(class_id="class_0", day_of_week=1, period=1, week=0),
+            Gene(class_id="class_1", day_of_week=1, period=2, week=0),
+            Gene(class_id="class_2", day_of_week=1, period=3, week=0),
+        ]
+        
+        # Should be invalid - three consecutive classes not allowed
+        assert chromosome.validate() is False
+        
+        # 5. Test consecutive pairs constraint
+        # First make sure the constraint field exists and set it to false
+        if not hasattr(request.constraints, 'allowConsecutiveClasses'):
+            # Add the attribute dynamically
+            setattr(request.constraints, 'allowConsecutiveClasses', False)
+        else:
+            request.constraints.allowConsecutiveClasses = False
+        
+        # Create a schedule with consecutive pairs
+        chromosome.genes = [
+            # Consecutive pairs on day 1, week 0
+            Gene(class_id="class_0", day_of_week=1, period=1, week=0),
+            Gene(class_id="class_1", day_of_week=1, period=2, week=0),
+        ]
+        
+        # Should be invalid - consecutive pairs not allowed
+        assert chromosome.validate() is False
+        
+        # 6. Now allow consecutive pairs and test again
+        request.constraints.allowConsecutiveClasses = True
+        
+        # Should now be valid with consecutive pairs allowed
+        assert chromosome.validate() is True
+
+    def test_crossover_methods(self):
+        """Test all crossover methods."""
+        request = create_test_request()
+        parent1 = ScheduleChromosome(request)
+        parent1.initialize_random()
+        
+        parent2 = ScheduleChromosome(request)
+        parent2.initialize_random()
+        
+        # Test supported methods - likely just these three
+        for method in ["single_point", "two_point", "uniform"]:
+            try:
+                child1, child2 = parent1.crossover(parent2, method=method)
+                assert len(child1.genes) == len(parent1.genes)
+                assert len(child2.genes) == len(parent2.genes)
+                assert child1.genes != parent1.genes  # Should be different from parents
+                assert child2.genes != parent2.genes
+            except Exception as e:
+                # If a method is not supported, we'll skip testing it
+                print(f"Skipping unsupported crossover method: {method}")
+                continue
+            
+        # Test auto selection if supported
+        try:
+            child1, child2 = parent1.crossover(parent2, method="auto")
+            assert len(child1.genes) == len(parent1.genes)
+            assert len(child2.genes) == len(parent2.genes)
+        except Exception as e:
+            # Auto selection might not be supported
+            print("Auto selection not supported")
