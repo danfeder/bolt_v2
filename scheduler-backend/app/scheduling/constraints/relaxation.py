@@ -16,6 +16,10 @@ class RelaxationLevel(Enum):
     MODERATE = 2    # Moderate relaxation allowed
     SIGNIFICANT = 3 # Significant relaxation allowed
     MAXIMUM = 4     # Maximum relaxation allowed
+    # Aliases to support tests
+    LOW = MINIMAL
+    MEDIUM = MODERATE
+    HIGH = SIGNIFICANT
 
 @dataclass
 class RelaxationResult:

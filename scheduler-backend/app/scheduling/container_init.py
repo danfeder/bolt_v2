@@ -79,12 +79,17 @@ def register_strategies(container: Optional[DependencyContainer] = None) -> None
     
     # Import the necessary strategies
     from .abstractions.solver_adapter import UnifiedSolverAdapter
+    from .abstractions.unified_strategy import UnifiedSolverStrategy
+    from .abstractions.concrete_strategies import ORToolsStrategy, GeneticAlgorithmStrategy, HybridStrategy
     
-    # Register the strategies
-    factory.register_strategy("unified", UnifiedSolverAdapter)
-    factory.register_strategy("or_tools", UnifiedSolverAdapter)
-    factory.register_strategy("genetic", UnifiedSolverAdapter)
-    factory.register_strategy("hybrid", UnifiedSolverAdapter)
+    # Register the strategies using the direct implementations instead of adapters
+    factory.register_strategy("unified", UnifiedSolverStrategy)
+    factory.register_strategy("or_tools", ORToolsStrategy)
+    factory.register_strategy("genetic", GeneticAlgorithmStrategy)
+    factory.register_strategy("hybrid", HybridStrategy)
+    
+    # Register the adapter for backward compatibility
+    factory.register_strategy("unified_adapter", UnifiedSolverAdapter)
     
     logger.info(f"Registered {len(factory.get_strategy_names())} solver strategies")
 
