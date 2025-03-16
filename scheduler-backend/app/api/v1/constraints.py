@@ -4,6 +4,11 @@ Constraints API Router
 This module provides API endpoints for managing the modular constraint system.
 It exposes operations to list, configure, and validate constraints without
 relying on category-based organization.
+
+NOTE: All constraints are enabled by default. The enable/disable endpoints
+are maintained for backward compatibility but their usage is discouraged.
+Users should focus on configuring constraint parameters rather than
+enabling or disabling constraints.
 """
 
 import logging
@@ -192,12 +197,15 @@ async def update_constraints_configuration(
 
 @router.post(
     "/{constraint_name}/enable",
-    summary="Enable a constraint",
+    summary="Enable a constraint (DEPRECATED)",
     description="""
-    Enable a specific constraint.
+    [DEPRECATED] Enable a specific constraint.
     
-    This endpoint enables a constraint and optionally updates its configuration.
-    """
+    NOTE: All constraints are now enabled by default. This endpoint is maintained for
+    backward compatibility only. Use the configuration endpoint to configure constraint
+    parameters instead.
+    """,
+    deprecated=True
 )
 async def enable_constraint(
     constraint_name: str,
@@ -205,7 +213,11 @@ async def enable_constraint(
     constraint_service: ConstraintService = Depends(get_constraint_service)
 ) -> Dict[str, Any]:
     """
-    Enable a constraint
+    Enable a constraint (DEPRECATED)
+    
+    All constraints are now enabled by default.
+    Use the configuration endpoint to configure constraint parameters.
+    This endpoint is maintained for backward compatibility only.
     
     Args:
         constraint_name: The name of the constraint to enable
@@ -213,35 +225,56 @@ async def enable_constraint(
         constraint_service: The constraint service
         
     Returns:
-        Result of the enable operation
+        Result of the enable operation with deprecation warning
     """
-    logger.info(f"API: Enabling constraint {constraint_name}")
+    logger.warning(f"API: Deprecated endpoint called to enable constraint {constraint_name}")
     result = constraint_service.enable_constraint(constraint_name, config)
-    return handle_service_result(result, f"Constraint {constraint_name} enabled successfully")
+    response = handle_service_result(result, f"Constraint {constraint_name} enabled successfully")
+    
+    # Add deprecation warning to response
+    if "warnings" not in response:
+        response["warnings"] = []
+    response["warnings"].append("This endpoint is deprecated. All constraints are enabled by default.")
+    
+    return response
 
 
 @router.post(
     "/{constraint_name}/disable",
-    summary="Disable a constraint",
-    description="Disable a specific constraint."
+    summary="Disable a constraint (DEPRECATED)",
+    description="""
+    [DEPRECATED] Disable a specific constraint.
+    
+    NOTE: All constraints are now enabled by default and cannot be disabled.
+    This endpoint is maintained for backward compatibility only.
+    """,
+    deprecated=True
 )
 async def disable_constraint(
     constraint_name: str,
     constraint_service: ConstraintService = Depends(get_constraint_service)
 ) -> Dict[str, Any]:
     """
-    Disable a constraint
+    Disable a constraint (DEPRECATED)
+    
+    All constraints are now enabled by default and cannot be disabled.
+    This endpoint is maintained for backward compatibility only.
     
     Args:
         constraint_name: The name of the constraint to disable
         constraint_service: The constraint service
         
     Returns:
-        Result of the disable operation
+        Result with deprecation warning
     """
-    logger.info(f"API: Disabling constraint {constraint_name}")
-    result = constraint_service.disable_constraint(constraint_name)
-    return handle_service_result(result, f"Constraint {constraint_name} disabled successfully")
+    logger.warning(f"API: Deprecated endpoint called to disable constraint {constraint_name}")
+    # Create a warning response instead of actually disabling
+    response = {
+        "success": True,
+        "message": f"Constraint {constraint_name} cannot be disabled in current version",
+        "warnings": ["This endpoint is deprecated. All constraints are now enabled by default and cannot be disabled."]
+    }
+    return response
 
 
 @router.post(
@@ -250,8 +283,8 @@ async def disable_constraint(
     description="""
     Reset all constraints to their default configurations.
     
-    This endpoint resets the enabled/disabled status and configuration
-    parameters of all constraints to their default values.
+    This endpoint resets the configuration parameters of all constraints
+    to their default values. Note that all constraints remain enabled.
     """
 )
 async def reset_constraints(

@@ -39,30 +39,36 @@ class ConstraintService:
         self._setup_default_constraints()
     
     def _setup_default_constraints(self) -> None:
-        """Set up default constraints for the constraint manager"""
-        # Add essential constraints that should always be enabled
-        essential_constraints = [
-            "single_assignment",
-            "no_overlap",
-            "instructor_availability",
-            "daily_limit",
-            "weekly_limit"
-        ]
+        """Set up default constraints for the constraint manager
         
-        # Add optional constraints that are enabled by default but can be disabled
-        optional_constraints = [
-            "consecutive_period",
-            "required_periods",
-            "conflict_periods"
-        ]
+        Automatically enables all registered constraints by default.
+        Individual constraints may be configured but not disabled.
+        """
+        # Get all registered constraints from the factory
+        registered_constraints = self._factory.get_registrations()
         
-        # Add all essential constraints
-        for constraint_name in essential_constraints:
-            self._manager.add_constraint(constraint_name)
-        
-        # Add all optional constraints
-        for constraint_name in optional_constraints:
-            self._manager.add_constraint(constraint_name)
+        # Enable all constraints by default
+        for constraint_name in registered_constraints:
+            try:
+                self._manager.add_constraint(constraint_name)
+                logger.info(f"Enabled constraint: {constraint_name}")
+                
+                # Get metadata for potential default configuration
+                constraint_info = registered_constraints[constraint_name]
+                
+                # If the constraint has deprecation info, log a warning
+                if hasattr(constraint_info, 'deprecated') and constraint_info.deprecated:
+                    deprecation_msg = f"Constraint '{constraint_name}' is deprecated"
+                    if hasattr(constraint_info, 'deprecation_message') and constraint_info.deprecation_message:
+                        deprecation_msg += f": {constraint_info.deprecation_message}"
+                    logger.warning(deprecation_msg)
+                    
+                # Apply default configuration if available
+                if hasattr(constraint_info, 'default_params') and constraint_info.default_params:
+                    # Future enhancement: configure with default parameters
+                    pass
+            except Exception as e:
+                logger.warning(f"Could not enable constraint {constraint_name}: {e}")
     
     def get_all_constraints(self) -> Result[Dict[str, Any]]:
         """
