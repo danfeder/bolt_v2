@@ -158,6 +158,11 @@ export const useScheduleStore = create<ScheduleState>((
       set({ isGenerating: true, generationProgress: 0 });
 
       try {
+        // Validate that start date is specified (critical for multi-week scheduling)
+        if (!constraints.startDate) {
+          throw new Error('Start date is required for scheduling. Please select a valid start date.');
+        }
+
         // Use Python backend solver via API
         const result = await generateScheduleWithOrTools(
           classes,
@@ -175,12 +180,21 @@ export const useScheduleStore = create<ScheduleState>((
           error: null
         });
       } catch (error) {
+        // Enhance error handling with better message formatting and detailed logging
+        const errorMessage = error instanceof Error 
+          ? error.message 
+          : 'Failed to generate schedule. Please check your settings and try again.';
+
+        console.error('Schedule generation error:', { message: errorMessage, error });
+        
         set({ 
           isGenerating: false, 
           generationProgress: 0,
-          error: error instanceof Error ? error.message : 'Failed to generate schedule'
+          error: errorMessage
         });
-        throw error;
+        
+        // Re-throw to allow higher-level components to handle the error
+        throw new Error(errorMessage);
       }
     },
 

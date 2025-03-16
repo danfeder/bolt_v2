@@ -115,6 +115,24 @@ export interface SolverWeights {
   earlier_dates: number;
 }
 
+// Enhanced constraint system types
+export interface ConstraintMetadata {
+  name: string;
+  description: string;
+  category: string;
+  default_enabled: boolean;
+  default_weight: number | null;
+  is_relaxable: boolean;
+  incompatible_with: string[];
+  requires: string[];
+}
+
+export interface ConstraintCategory {
+  name: string;
+  description: string;
+  constraints: ConstraintMetadata[];
+}
+
 // New interfaces for tabbed interface
 export type SchedulerTab = 'setup' | 'visualize' | 'dashboard' | 'debug';
 

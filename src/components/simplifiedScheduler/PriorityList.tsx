@@ -5,6 +5,7 @@ interface PriorityListProps {
   priorities: Priority[];
   onReorder: (newPriorities: Priority[]) => void;
   disabled?: boolean;
+  showConstraintInfo?: boolean;
 }
 
 /**

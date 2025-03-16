@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSimplifiedScheduler } from '../../store/simplifiedSchedulerStore';
-import { PriorityList } from './PriorityList';
-import { InstructorLoadSettings } from './InstructorLoadSettings';
-import { AdvancedOptions } from './AdvancedOptions';
+// Import components and types directly from the index to ensure proper resolution
+import { PriorityList, InstructorLoadSettings, AdvancedOptions } from '.';
 import { Priority, InstructorLoadSettings as ILoadSettings, AdvancedSettings } from './types';
 
 /**
@@ -15,9 +14,7 @@ import { Priority, InstructorLoadSettings as ILoadSettings, AdvancedSettings } f
  * - Provides advanced tuning options for special cases
  */
 export const SimplifiedSchedulerPanel: React.FC = () => {
-  // Use our simplified connector instead of the raw store
-  const { isGenerating, error, constraints, generateSchedule } = useSimplifiedScheduler();
-  
+  // Define all state hooks first to maintain consistent hooks order
   // Default priority order
   const [priorities, setPriorities] = useState([
     { id: 'grade_grouping', name: 'Grade Grouping', description: 'Keep similar grades together' },
@@ -36,24 +33,34 @@ export const SimplifiedSchedulerPanel: React.FC = () => {
     allowMaxFlexibility: false
   });
   
-  // Advanced settings
-  const [advanced, setAdvanced] = useState({
+  // Advanced settings with constraint-related fields
+  const [advanced, setAdvanced] = useState<AdvancedSettings>({
     autoTuneWeights: false,
-    requireBreakBetweenClasses: true
+    requireBreakBetweenClasses: true,
+    // Add new fields from our enhanced constraint system with defaults
+    relaxIncompatibleConstraints: false,
+    strictValidation: false,
+    enabledCategories: [],
+    // Default start date to tomorrow
+    startDate: new Date(new Date().setDate(new Date().getDate() + 1))
   });
+  
+  // Use our simplified connector after all useState calls for consistent order
+  const { isGenerating, error, constraints, generateSchedule } = useSimplifiedScheduler();
   
   // Initialize instructor load settings from current constraints if available
   useEffect(() => {
     if (constraints) {
-      setInstructorLoad({
-        ...instructorLoad,
-        maxPerDay: constraints.maxClassesPerDay || instructorLoad.maxPerDay,
-        maxPerWeek: constraints.maxClassesPerWeek || instructorLoad.maxPerWeek,
-        minPerWeek: constraints.minPeriodsPerWeek || instructorLoad.minPerWeek,
+      // Use functional update to avoid dependency on instructorLoad
+      setInstructorLoad(prevSettings => ({
+        ...prevSettings,
+        maxPerDay: constraints.maxClassesPerDay || prevSettings.maxPerDay,
+        maxPerWeek: constraints.maxClassesPerWeek || prevSettings.maxPerWeek,
+        minPerWeek: constraints.minPeriodsPerWeek || prevSettings.minPerWeek,
         allowMaxFlexibility: constraints.consecutiveClassesRule === 'soft'
-      });
+      }));
     }
-  }, [constraints]);
+  }, [constraints]); // Only depend on constraints
 
   // Handle priority reordering
   const handlePriorityReorder = (newPriorities: Priority[]) => {
@@ -76,16 +83,26 @@ export const SimplifiedSchedulerPanel: React.FC = () => {
     });
   };
   
-  // Generate schedule
+  // Generate schedule with proper error handling
   const handleGenerateSchedule = async () => {
     try {
+      // Validate the startDate is set
+      if (!advanced.startDate) {
+        throw new Error('Start date is required for scheduling. Please select a start date.');
+      }
+      
       // Use our connector to generate the schedule with our simplified configuration
       await generateSchedule(priorities, instructorLoad, advanced);
       
       // In a future increment, we'll add more detailed UI feedback
       console.log('Schedule generation completed successfully');
     } catch (err) {
-      console.error('Error generating schedule:', err);
+      // Properly log the full error object and message
+      console.error('Error generating schedule:', err instanceof Error ? err.message : String(err));
+      
+      // Re-throw to ensure the error state is updated in the store
+      // The store's error state will be displayed in the UI
+      throw err;
     }
   };
   
