@@ -4,9 +4,11 @@ import type {
   ScheduleConstraints, 
   InstructorAvailability,
   ScheduleMetadata,
-  SolverWeights,
+  // SolverWeights, // Commented out - unused
   GeneticSolverConfig,
-  SolverConfig
+  SolverConfig,
+  ConstraintCategory,
+  ConstraintMetadata
 } from '../types';
 import type {
   DashboardData,
@@ -17,7 +19,7 @@ import type {
 import type { ComparisonResult } from '../store/types';
 
 export class ApiClient {
-  private csrfToken: string | null = null;
+  private _csrfToken: string | null = null; // Prefixed with _ to indicate it's not currently being used
   private baseUrl: string;
   
   constructor() {
@@ -231,6 +233,47 @@ export class ApiClient {
       throw error;
     }
   }
+
+  /**
+   * Get all constraint categories
+   * @returns List of constraint categories with metadata
+   */
+  async getConstraintCategories(): Promise<ConstraintCategory[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/constraints/categories`);
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || data.message || 'Failed to get constraint categories');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Constraint categories error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get information about a specific constraint
+   * @param constraintName The name of the constraint
+   * @returns Constraint metadata
+   */
+  async getConstraintInfo(constraintName: string): Promise<ConstraintMetadata> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/constraints/${constraintName}`);
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || data.message || 'Failed to get constraint info');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error(`Constraint info error for ${constraintName}:`, error);
+      throw error;
+    }
+  }
 }
 
 export const apiClient = new ApiClient();
@@ -246,8 +289,10 @@ interface ScheduleRequest {
     minPeriodsPerWeek: number;
     maxConsecutiveClasses: 1 | 2;
     consecutiveClassesRule: 'hard' | 'soft';
-    startDate: string;  // Added to match backend expectations
-    endDate: string;    // Added to match backend expectations
+    startDate: string;  // Same as parent startDate
+    endDate: string;    // Same as parent endDate
+    allowConsecutiveClasses?: boolean; // Optional - defaults to true on backend
+    requiredBreakPeriods?: number[];   // Optional - defaults to empty array on backend
   };
 }
 
@@ -269,11 +314,11 @@ const SCHEDULER_URL = (() => {
   // Check if we're in a browser environment with window
   if (typeof window !== 'undefined') {
     return window.location.hostname === 'localhost'
-      ? 'http://localhost:8001' // Development URL for scheduler
-      : '/scheduler'; // Production URL for scheduler
+      ? 'http://localhost:8000/api/v1/scheduler' // Updated development URL for scheduler
+      : '/api/v1/scheduler'; // Updated production URL for scheduler
   } else {
     // We're in a Node.js environment (tests)
-    return 'http://localhost:8001'; // Default to dev URL for tests
+    return 'http://localhost:8000/api/v1/scheduler'; // Updated default URL for tests
   }
 })();
 
@@ -304,7 +349,25 @@ export async function generateScheduleWithOrTools(
 
   try {
     // Use explicit endpoint paths instead of query parameters
+    // The full path is /api/v1/scheduler/schedule/{version} based on the backend API structure
     const url = `${SCHEDULER_URL}/schedule/${version}`;
+    
+    // Log request data for debugging
+    console.log('Sending request to scheduler API:', {
+      url,
+      constraints: request.constraints,
+      classCount: request.classes.length,
+      startDate: request.startDate,
+      endDate: request.endDate
+    });
+    
+    // Add a simple test to verify API connectivity
+    try {
+      const healthCheck = await fetch('http://localhost:8000/health');
+      console.log('Health check status:', healthCheck.status, healthCheck.statusText);
+    } catch (healthError) {
+      console.warn('Health check failed, API server may not be running:', healthError);
+    }
 
     const response = await fetch(url, {
       method: 'POST',
@@ -312,26 +375,66 @@ export async function generateScheduleWithOrTools(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-      ...request,
-      geneticConfig
-    }),
+        ...request,
+        // Include genetic config only if provided
+        ...(geneticConfig ? { geneticConfig } : {})
+      }),
     });
-
-    const data = await response.json();
+    
+    // Log response status for debugging
+    console.log('Scheduler API response status:', response.status, response.statusText);
+    
+    // Check for empty response first
+    const responseText = await response.text();
+    
+    if (!responseText || responseText.trim() === '') {
+      throw new Error('Empty response from server. The API may not be running or accessible.');
+    }
+    
+    // Now parse the JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse API response:', responseText);
+      throw new Error(`Invalid JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown parsing error'}`);
+    }
 
     if (!response.ok) {
+      // Log the complete error response for debugging
+      console.log('Server error response details:', data);
+      
       // Handle validation errors
       if (response.status === 422) {
-        const validationError = data;
-        if (Array.isArray(validationError)) {
-          const errorMessage = validationError
-            .map(err => err.msg || err.message || JSON.stringify(err))
+        // Handle new error format with errors array
+        if (data?.errors && Array.isArray(data.errors)) {
+          const errorDetails = data.errors
+            .map((err: any) => `${err.field || ''}: ${err.message || JSON.stringify(err)}`)
             .join('\n');
-          throw new Error(`Validation errors:\n${errorMessage}`);
-        } else if (validationError.detail) {
-          throw new Error(validationError.detail);
+          throw new Error(`Validation errors:\n${errorDetails}`);
+        }
+        // Handle FastAPI validation error format
+        else if (data?.detail && Array.isArray(data.detail)) {
+          const errorMessage = data.detail
+            .map((err: any) => `${err.loc?.join('.') || ''}: ${err.msg || JSON.stringify(err)}`)
+            .join('\n');
+          throw new Error(`Request validation errors:\n${errorMessage}`);
+        }
+        // Handle legacy validation error format
+        else {
+          const validationError = data;
+          if (Array.isArray(validationError)) {
+            const errorMessage = validationError
+              .map((err: any) => err.msg || err.message || JSON.stringify(err))
+              .join('\n');
+            throw new Error(`Validation errors:\n${errorMessage}`);
+          } else if (validationError.detail) {
+            throw new Error(validationError.detail);
+          }
         }
       }
+      
+      // Handle other API errors
       throw new Error(data.detail || data.message || 'Failed to generate schedule');
     }
 
@@ -345,8 +448,27 @@ export async function generateScheduleWithOrTools(
       metadata: data.metadata,
     };
   } catch (error) {
-    console.error('Schedule generation error:', error);
-    throw error;
+    // Enhanced error logging with more context
+    console.error('Schedule generation error:', { 
+      message: error instanceof Error ? error.message : 'Unknown error',
+      requestData: {
+        startDate: request.startDate,
+        endDate: request.endDate,
+        maxClassesPerDay: request.constraints.maxClassesPerDay,
+        maxClassesPerWeek: request.constraints.maxClassesPerWeek,
+        classCount: request.classes.length
+      },
+      error
+    });
+    
+    // Provide more user-friendly error message
+    if (error instanceof Error) {
+      if (error.message.includes('Unexpected end of JSON input')) {
+        throw new Error('Unable to connect to the scheduling service. Please ensure the API server is running.');
+      }
+      throw error;
+    }
+    throw new Error('Failed to generate schedule. Check the browser console for more details.');
   }
 }
 
