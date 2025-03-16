@@ -268,6 +268,33 @@ class ConstraintFactory:
                     )
         
         return errors
+    
+    def validate_constraint_compatibility(self, constraint_names: List[str]) -> List[str]:
+        """
+        Validate that a set of constraints are compatible with each other
+        
+        This is an alias for validate_constraints_compatibility() to maintain
+        API compatibility with modular constraint system expectations.
+        
+        Args:
+            constraint_names: List of constraint names to validate
+            
+        Returns:
+            List of error messages, empty if all constraints are compatible
+        """
+        return self.validate_constraints_compatibility(constraint_names)
+    
+    def get_registrations(self) -> Dict[str, ConstraintInfo]:
+        """
+        Get all constraint registrations
+        
+        This method provides access to all registered constraints and their metadata,
+        primarily for use by the modular constraint system.
+        
+        Returns:
+            Dictionary mapping constraint names to their registration information
+        """
+        return self._registrations.copy()
 
 
 # Global constraint factory instance

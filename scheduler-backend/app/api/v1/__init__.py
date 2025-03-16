@@ -11,6 +11,8 @@ v1_router = APIRouter(prefix="/api/v1")
 
 # Import and include the individual routers
 from .scheduler import router as scheduler_router
+from .constraints import router as constraints_router
 
 # Include the routers in the main router
 v1_router.include_router(scheduler_router)
+v1_router.include_router(constraints_router)

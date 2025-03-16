@@ -11,6 +11,7 @@ from ..repositories.repository_factory import RepositoryFactory
 
 from .base_service import BaseService
 from .scheduler_service import SchedulerService
+from .constraint_service import ConstraintService
 
 # Set up type variables for better type hinting
 T = TypeVar('T', bound=BaseService)
@@ -33,6 +34,7 @@ class ServiceFactory:
         self._services: Dict[str, BaseService] = {}
         self._service_types: Dict[str, Type[BaseService]] = {
             'scheduler': SchedulerService,
+            'constraint': ConstraintService,
             # Add more services here as they are created
         }
         logger.debug("ServiceFactory initialized")
@@ -130,6 +132,33 @@ class ServiceFactory:
             self._services['scheduler'] = SchedulerService(schedule_repository=schedule_repository)
         
         return self.get_typed_service('scheduler', SchedulerService, **kwargs)
+        
+    def create_constraint_service(self, **kwargs) -> ConstraintService:
+        """
+        Create a constraint service with the specified dependencies.
+        
+        Args:
+            **kwargs: Dependencies to inject
+            
+        Returns:
+            A new ConstraintService instance
+        """
+        return cast(ConstraintService, self.create_service('constraint', **kwargs))
+    
+    def get_constraint_service(self, **kwargs) -> ConstraintService:
+        """
+        Get the constraint service singleton instance.
+        
+        Args:
+            **kwargs: Dependencies to inject if creating a new instance
+            
+        Returns:
+            The ConstraintService singleton instance
+        """
+        if 'constraint' not in self._services:
+            self._services['constraint'] = ConstraintService()
+        
+        return self.get_typed_service('constraint', ConstraintService, **kwargs)
 
 
 # Create a singleton instance of the service factory
