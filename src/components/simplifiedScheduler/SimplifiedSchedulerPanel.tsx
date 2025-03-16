@@ -1,37 +1,22 @@
-import React, { useState } from 'react';
-import { useScheduleStore } from '../../store/scheduleStore';
+import React, { useState, useEffect } from 'react';
+import { useSimplifiedScheduler } from '../../store/simplifiedSchedulerStore';
 import { PriorityList } from './PriorityList';
 import { InstructorLoadSettings } from './InstructorLoadSettings';
 import { AdvancedOptions } from './AdvancedOptions';
-
-// Types for our simplified scheduler
-export interface Priority {
-  id: string;
-  name: string;
-  description: string;
-}
-
-export interface InstructorLoadSettings {
-  minPerDay: number;
-  maxPerDay: number;
-  minPerWeek: number;
-  maxPerWeek: number;
-  allowMinFlexibility: boolean;
-  allowMaxFlexibility: boolean;
-}
-
-export interface AdvancedSettings {
-  autoTuneWeights: boolean;
-  requireBreakBetweenClasses: boolean;
-}
+import { Priority, InstructorLoadSettings as ILoadSettings, AdvancedSettings } from './types';
 
 /**
  * Simplified scheduler configuration panel designed for non-technical users
  * Provides an intuitive interface for setting scheduling priorities and constraints
+ * 
+ * Integration with the scheduling system:
+ * - Maps priority order to solver weights
+ * - Connects instructor load settings to scheduler constraints
+ * - Provides advanced tuning options for special cases
  */
 export const SimplifiedSchedulerPanel: React.FC = () => {
-  const isGenerating = useScheduleStore(state => state.isGenerating);
-  const generateSchedule = useScheduleStore(state => state.generateSchedule);
+  // Use our simplified connector instead of the raw store
+  const { isGenerating, error, constraints, generateSchedule } = useSimplifiedScheduler();
   
   // Default priority order
   const [priorities, setPriorities] = useState([
@@ -57,13 +42,26 @@ export const SimplifiedSchedulerPanel: React.FC = () => {
     requireBreakBetweenClasses: true
   });
   
+  // Initialize instructor load settings from current constraints if available
+  useEffect(() => {
+    if (constraints) {
+      setInstructorLoad({
+        ...instructorLoad,
+        maxPerDay: constraints.maxClassesPerDay || instructorLoad.maxPerDay,
+        maxPerWeek: constraints.maxClassesPerWeek || instructorLoad.maxPerWeek,
+        minPerWeek: constraints.minPeriodsPerWeek || instructorLoad.minPerWeek,
+        allowMaxFlexibility: constraints.consecutiveClassesRule === 'soft'
+      });
+    }
+  }, [constraints]);
+
   // Handle priority reordering
   const handlePriorityReorder = (newPriorities: Priority[]) => {
     setPriorities(newPriorities);
   };
   
   // Handle instructor load changes
-  const handleInstructorLoadChange = (changes: Partial<InstructorLoadSettings>) => {
+  const handleInstructorLoadChange = (changes: Partial<ILoadSettings>) => {
     setInstructorLoad({
       ...instructorLoad,
       ...changes
@@ -79,26 +77,16 @@ export const SimplifiedSchedulerPanel: React.FC = () => {
   };
   
   // Generate schedule
-  const handleGenerateSchedule = () => {
-    // Convert priorities to weights
-    const weights: Record<string, number> = {};
-    priorities.forEach((priority, index) => {
-      // Higher index = lower in the list = lower weight
-      const weight = 4000 - (index * 1000);
-      weights[priority.id] = weight;
-    });
-    
-    // In the next increment, we'll integrate this with the store
-    // For now we'll use the existing generateSchedule function with no arguments
-    // which will maintain compatibility with the existing system
-    generateSchedule();
-    
-    // Log the configuration for debugging/verification
-    console.log('Simplified scheduler configuration:', {
-      priorities: priorities.map(p => p.name),
-      instructorLoad,
-      advanced
-    });
+  const handleGenerateSchedule = async () => {
+    try {
+      // Use our connector to generate the schedule with our simplified configuration
+      await generateSchedule(priorities, instructorLoad, advanced);
+      
+      // In a future increment, we'll add more detailed UI feedback
+      console.log('Schedule generation completed successfully');
+    } catch (err) {
+      console.error('Error generating schedule:', err);
+    }
   };
   
   return (
@@ -154,6 +142,14 @@ export const SimplifiedSchedulerPanel: React.FC = () => {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
           <p className="text-sm text-blue-700">
             Creating your schedule. This may take a moment depending on the complexity.
+          </p>
+        </div>
+      )}
+      
+      {error && !isGenerating && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mt-6">
+          <p className="text-sm text-red-700">
+            {error}
           </p>
         </div>
       )}

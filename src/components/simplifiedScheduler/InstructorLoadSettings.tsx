@@ -1,5 +1,5 @@
 import React from 'react';
-import { InstructorLoadSettings as ILoadSettings } from './SimplifiedSchedulerPanel';
+import { InstructorLoadSettings as ILoadSettings } from './types';
 
 interface InstructorLoadProps {
   settings: ILoadSettings;

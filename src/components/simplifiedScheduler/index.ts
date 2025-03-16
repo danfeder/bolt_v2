@@ -1,5 +1,10 @@
 // Export all components and types from our simplified scheduler
-export * from './SimplifiedSchedulerPanel';
-export * from './PriorityList';
-export * from './InstructorLoadSettings';
-export * from './AdvancedOptions';
+
+// Export shared types
+export * from './types';
+
+// Export components
+export { SimplifiedSchedulerPanel } from './SimplifiedSchedulerPanel';
+export { PriorityList } from './PriorityList';
+export { InstructorLoadSettings } from './InstructorLoadSettings';
+export { AdvancedOptions } from './AdvancedOptions';

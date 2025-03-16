@@ -1,5 +1,5 @@
 import React from 'react';
-import { AdvancedSettings } from './SimplifiedSchedulerPanel';
+import { AdvancedSettings } from './types';
 
 interface AdvancedOptionsProps {
   settings: AdvancedSettings;

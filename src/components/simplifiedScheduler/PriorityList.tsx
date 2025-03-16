@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Priority } from './SimplifiedSchedulerPanel';
+import { Priority } from './types';
 
 interface PriorityListProps {
   priorities: Priority[];
