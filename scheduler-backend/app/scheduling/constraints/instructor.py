@@ -161,7 +161,13 @@ class ConsecutivePeriodConstraint(BaseConstraint):
         return violations
 
 class InstructorLoadConstraint(BaseConstraint):
-    """Ensures an instructor does not exceed maximum classes per day and per week."""
+    """
+    Ensures an instructor does not exceed maximum classes per day and per week.
+    
+    DEPRECATED: This constraint is redundant in a single-instructor scenario where
+    DailyLimitConstraint and WeeklyLimitConstraint already serve the same purpose.
+    It is kept for backward compatibility and potential future multi-instructor scenarios.
+    """
     
     def __init__(self, max_classes_per_day: int = 3, max_classes_per_week: int = 12):
         super().__init__("instructor_load")
