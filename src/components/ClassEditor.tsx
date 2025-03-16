@@ -1,7 +1,18 @@
 import React from 'react';
 import { PlusCircle, Trash2, Save, Clock } from 'lucide-react';
 import { useScheduleStore } from '../store/scheduleStore';
-import type { Class, TimeSlot } from '../types';
+import type { Class, ConflictPeriod, TimeSlot } from '../types';
+
+// Extended version of Class with editor-specific properties
+interface EditableClass extends Class {
+  id: string;
+  weeklySchedule?: {
+    conflicts: ConflictPeriod[];
+    preferredPeriods: ConflictPeriod[];
+    requiredPeriods: ConflictPeriod[];
+    avoidPeriods: ConflictPeriod[];
+  };
+}
 
 const PERIODS = Array.from({ length: 8 }, (_, i) => i + 1);
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -10,34 +21,63 @@ const GRADES = ['Pre-K', 'K', '1', '2', '3', '4', '5', 'multiple'];
 type CellState = 'blank' | 'conflict' | 'preferred' | 'required' | 'avoid';
 
 export const ClassEditor: React.FC = () => {
-  const { classes, setClasses } = useScheduleStore();
+  const { classes: storeClasses, setClasses } = useScheduleStore();
+  const [editableClasses, setEditableClasses] = React.useState<EditableClass[]>([]);
   const [selectedClassId, setSelectedClassId] = React.useState<string>('');
-  const [editedClass, setEditedClass] = React.useState<Class | null>(null);
+  const [editedClass, setEditedClass] = React.useState<EditableClass | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
   const [selectedGrade, setSelectedGrade] = React.useState<string>('Pre-K');
   const [gradeLunchPeriod, setGradeLunchPeriod] = React.useState<number>(0);
 
+  // Convert store classes to editable classes with IDs and weekly schedule
   React.useEffect(() => {
-    if (classes.length > 0 && !selectedClassId) {
-      setSelectedClassId(classes[0].id);
+    const converted = storeClasses.map((c, index) => {
+      // Create an ID if not already present in our editable classes
+      const existingClass = editableClasses.find(ec => ec.name === c.name && ec.grade === c.grade);
+      // Ensure stable IDs by using consistent identifiers
+      const id = existingClass?.id || `class-${c.name}-${c.grade}-${index}`;
+      
+      // Convert from the API Class format to our editable format
+      return {
+        ...c,
+        id,
+        weeklySchedule: {
+          conflicts: c.conflicts || [],
+          preferredPeriods: [],
+          requiredPeriods: c.conflicts?.map(conflict => ({
+            dayOfWeek: conflict.dayOfWeek,
+            period: conflict.period
+          })) || [],
+          avoidPeriods: []
+        }
+      };
+    });
+    
+    setEditableClasses(converted);
+    
+    // Select the first class if none is selected
+    if (converted.length > 0 && !selectedClassId) {
+      setSelectedClassId(converted[0].id);
     }
-  }, [classes]);
+  }, [storeClasses]);
 
   React.useEffect(() => {
-    const classToEdit = classes.find(c => c.id === selectedClassId);
+    const classToEdit = editableClasses.find(c => c.id === selectedClassId);
     if (classToEdit) {
       setEditedClass({ ...classToEdit });
     } else {
       setEditedClass(null);
     }
     setHasUnsavedChanges(false);
-  }, [selectedClassId, classes]);
+  }, [selectedClassId, editableClasses]);
 
   const addClass = () => {
-    const newClass: Class = {
+    const newClass: EditableClass = {
       id: `class-${Date.now()}`,
       name: '',
       grade: 'Pre-K',
+      conflicts: [],
+      required_periods: [],
       weeklySchedule: {
         conflicts: [],
         preferredPeriods: [],
@@ -45,17 +85,36 @@ export const ClassEditor: React.FC = () => {
         avoidPeriods: []
       }
     };
-    setClasses([...classes, newClass]);
+    const newEditableClasses = [...editableClasses, newClass];
+    setEditableClasses(newEditableClasses);
+    
+    // Update the store classes
+    const storeClass: Class = {
+      name: newClass.name,
+      grade: newClass.grade,
+      conflicts: newClass.conflicts,
+      required_periods: newClass.required_periods
+    };
+    setClasses([...storeClasses, storeClass]);
+    
     setSelectedClassId(newClass.id);
   };
 
   const removeClass = () => {
-    if (!selectedClassId) return;
-    setClasses(classes.filter(c => c.id !== selectedClassId));
-    setSelectedClassId(classes[0]?.id || '');
+    if (!selectedClassId || !editedClass) return;
+    
+    // Remove from editable classes
+    const newEditableClasses = editableClasses.filter(c => c.id !== selectedClassId);
+    setEditableClasses(newEditableClasses);
+    
+    // Remove from store classes
+    const newStoreClasses = storeClasses.filter(c => c.name !== editedClass.name || c.grade !== editedClass.grade);
+    setClasses(newStoreClasses);
+    
+    setSelectedClassId(newEditableClasses[0]?.id || '');
   };
 
-  const updateEditedClass = (updates: Partial<Class>) => {
+  const updateEditedClass = (updates: Partial<EditableClass>) => {
     if (!editedClass) return;
     setEditedClass({ ...editedClass, ...updates });
     setHasUnsavedChanges(true);
@@ -63,29 +122,48 @@ export const ClassEditor: React.FC = () => {
 
   const saveChanges = () => {
     if (!editedClass) return;
-    setClasses(classes.map(c => 
+    
+    // Update editable classes
+    const newEditableClasses = editableClasses.map(c => 
       c.id === editedClass.id ? editedClass : c
-    ));
+    );
+    setEditableClasses(newEditableClasses);
+    
+    // Update store classes
+    const updatedStoreClasses = storeClasses.map(c => {
+      if (c.name === editedClass.name || (editedClass.weeklySchedule && c.name === '')) {
+        // Create a store-compatible class object
+        return {
+          name: editedClass.name,
+          grade: editedClass.grade,
+          conflicts: editedClass.weeklySchedule?.conflicts || [],
+          required_periods: editedClass.required_periods || []
+        };
+      }
+      return c;
+    });
+    setClasses(updatedStoreClasses);
+    
     setHasUnsavedChanges(false);
   };
 
   const getCellState = (day: number, period: number): CellState => {
-    if (!editedClass) return 'blank';
+    if (!editedClass || !editedClass.weeklySchedule) return 'blank';
     
     const isConflict = editedClass.weeklySchedule.conflicts.some(
-      c => c.dayOfWeek === day && c.period === period
+      (c: ConflictPeriod) => c.dayOfWeek === day && c.period === period
     );
     
     const isRequired = editedClass.weeklySchedule.requiredPeriods.some(
-      r => r.dayOfWeek === day && r.period === period
+      (r: ConflictPeriod) => r.dayOfWeek === day && r.period === period
     );
     
     const isPreferred = editedClass.weeklySchedule.preferredPeriods.some(
-      p => p.dayOfWeek === day && p.period === period
+      (p: ConflictPeriod) => p.dayOfWeek === day && p.period === period
     );
 
     const isAvoid = editedClass.weeklySchedule.avoidPeriods.some(
-      a => a.dayOfWeek === day && a.period === period
+      (a: ConflictPeriod) => a.dayOfWeek === day && a.period === period
     );
     
     if (isConflict) return 'conflict';
@@ -96,15 +174,15 @@ export const ClassEditor: React.FC = () => {
   };
 
   const toggleCellState = (day: number, period: number) => {
-    if (!editedClass) return;
+    if (!editedClass || !editedClass.weeklySchedule) return;
 
     const currentState = getCellState(day, period);
     const timeSlot: TimeSlot = { dayOfWeek: day, period };
 
-    let newConflicts = [...editedClass.weeklySchedule.conflicts];
-    let newPreferred = [...editedClass.weeklySchedule.preferredPeriods];
-    let newRequired = [...editedClass.weeklySchedule.requiredPeriods];
-    let newAvoid = [...editedClass.weeklySchedule.avoidPeriods];
+    let newConflicts = [...(editedClass.weeklySchedule?.conflicts || [])];
+    let newPreferred = [...(editedClass.weeklySchedule?.preferredPeriods || [])];
+    let newRequired = [...(editedClass.weeklySchedule?.requiredPeriods || [])];
+    let newAvoid = [...(editedClass.weeklySchedule?.avoidPeriods || [])];
 
     switch (currentState) {
       case 'blank':
@@ -114,28 +192,28 @@ export const ClassEditor: React.FC = () => {
       case 'conflict':
         // Conflict → Preferred
         newConflicts = newConflicts.filter(
-          c => !(c.dayOfWeek === day && c.period === period)
+          (c: ConflictPeriod) => !(c.dayOfWeek === day && c.period === period)
         );
         newPreferred = [...newPreferred, timeSlot];
         break;
       case 'preferred':
         // Preferred → Required
         newPreferred = newPreferred.filter(
-          p => !(p.dayOfWeek === day && p.period === period)
+          (p: ConflictPeriod) => !(p.dayOfWeek === day && p.period === period)
         );
         newRequired = [...newRequired, timeSlot];
         break;
       case 'required':
         // Required → Avoid
         newRequired = newRequired.filter(
-          r => !(r.dayOfWeek === day && r.period === period)
+          (r: ConflictPeriod) => !(r.dayOfWeek === day && r.period === period)
         );
         newAvoid = [...newAvoid, timeSlot];
         break;
       case 'avoid':
         // Avoid → Blank
         newAvoid = newAvoid.filter(
-          a => !(a.dayOfWeek === day && a.period === period)
+          (a: ConflictPeriod) => !(a.dayOfWeek === day && a.period === period)
         );
         break;
     }
@@ -153,11 +231,11 @@ export const ClassEditor: React.FC = () => {
   const setGradeLunch = () => {
     if (!gradeLunchPeriod) return;
 
-    const updatedClasses = classes.map(classObj => {
-      if (classObj.grade !== selectedGrade) return classObj;
+    const updatedClasses = editableClasses.map((classObj: EditableClass) => {
+      if (classObj.grade !== selectedGrade || !classObj.weeklySchedule) return classObj;
 
       const nonLunchConflicts = classObj.weeklySchedule.conflicts.filter(
-        conflict => !DAYS.some((_, idx) => 
+        (conflict: ConflictPeriod) => !DAYS.some((_, idx) => 
           conflict.dayOfWeek === idx + 1 && conflict.period === gradeLunchPeriod
         )
       );
@@ -176,14 +254,26 @@ export const ClassEditor: React.FC = () => {
       };
     });
 
-    setClasses(updatedClasses);
+    // Update editable classes
+    setEditableClasses(updatedClasses);
+    
+    // Convert to store classes and update
+    const storeClassesUpdate = updatedClasses.map((c: EditableClass): Class => ({
+      name: c.name,
+      grade: c.grade,
+      conflicts: c.weeklySchedule?.conflicts || [],
+      required_periods: c.required_periods || []
+    }));
+    setClasses(storeClassesUpdate);
+    
+    // Update edited class if affected
     if (editedClass?.grade === selectedGrade) {
       const updatedClass = updatedClasses.find(c => c.id === editedClass.id);
       if (updatedClass) setEditedClass(updatedClass);
     }
   };
 
-  if (classes.length === 0) {
+  if (editableClasses.length === 0) {
     return (
       <div className="bg-white p-6 rounded-lg shadow-md text-center">
         <p className="text-gray-500 mb-4">No classes available. Add a class or import from CSV.</p>
@@ -241,9 +331,9 @@ export const ClassEditor: React.FC = () => {
                 onChange={(e) => setGradeLunchPeriod(Number(e.target.value))}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
               >
-                <option value={0}>Select period</option>
+                <option key="select-period-0" value={0}>Select period</option>
                 {PERIODS.map(period => (
-                  <option key={period} value={period}>{period}</option>
+                  <option key={`period-${period}`} value={period}>{period}</option>
                 ))}
               </select>
             </label>
@@ -271,8 +361,8 @@ export const ClassEditor: React.FC = () => {
             onChange={(e) => setSelectedClassId(e.target.value)}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
           >
-            {classes.map(c => (
-              <option key={c.id} value={c.id}>{c.name || 'Unnamed Class'}</option>
+            {editableClasses.map((c, index) => (
+              <option key={c.id || `temp-class-${index}`} value={c.id}>{c.name || 'Unnamed Class'}</option>
             ))}
           </select>
         </label>
@@ -303,7 +393,7 @@ export const ClassEditor: React.FC = () => {
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                   >
                     {GRADES.map(grade => (
-                      <option key={grade} value={grade}>{grade}</option>
+                      <option key={`grade-${grade}`} value={grade}>{grade}</option>
                     ))}
                   </select>
                 </label>
@@ -352,20 +442,20 @@ export const ClassEditor: React.FC = () => {
                 <thead>
                   <tr>
                     <th className="border p-2">Period</th>
-                    {DAYS.map(day => (
-                      <th key={day} className="border p-2">{day}</th>
+                    {DAYS.map((day, index) => (
+                      <th key={`day-${index}-${day}`} className="border p-2">{day}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {PERIODS.map(period => (
-                    <tr key={period}>
+                    <tr key={`period-row-${period}`}>
                       <td className="border p-2 font-medium">{period}</td>
                       {DAYS.map((_, dayIndex) => {
                         const state = getCellState(dayIndex + 1, period);
                         return (
                           <td
-                            key={dayIndex}
+                            key={`cell-${dayIndex}-${period}`}
                             className="border p-2"
                             onClick={() => toggleCellState(dayIndex + 1, period)}
                           >

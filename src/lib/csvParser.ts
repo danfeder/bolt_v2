@@ -1,4 +1,4 @@
-import { Class, WeeklySchedule, TimeSlot } from '../types';
+import { Class, ConflictPeriod, RequiredPeriod } from '../types';
 
 const parsePeriodsString = (periodsStr: string): number[] => {
   // Remove any quotes and extra whitespace
@@ -51,7 +51,7 @@ export const parseClassesCSV = (csvContent: string): Class[] => {
     }
     
     // Parse conflicts for each day
-    const conflicts: TimeSlot[] = [];
+    const conflicts: ConflictPeriod[] = [];
     
     // Process each day's conflicts (fields 1-5 are Mon-Fri)
     for (let dayIndex = 0; dayIndex < 5; dayIndex++) {
@@ -69,19 +69,14 @@ export const parseClassesCSV = (csvContent: string): Class[] => {
       }
     }
     
-    // Create the weekly schedule
-    const weeklySchedule: WeeklySchedule = {
-      conflicts,
-      preferredPeriods: [], // Initialize empty
-      requiredPeriods: [],  // Initialize empty
-      avoidPeriods: []      // Initialize empty
-    };
+    // Create required periods array (empty for now, as we don't have this data in CSV)
+    const required_periods: RequiredPeriod[] = [];
     
     return {
-      id: className,
       name: className,
       grade,
-      weeklySchedule
+      conflicts,
+      required_periods
     };
   });
 };

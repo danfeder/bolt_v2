@@ -2,6 +2,8 @@ import React from 'react';
 import type { SchedulerTab } from '../types';
 import { useScheduleStore } from '../store/scheduleStore';
 import { FileUpload } from './FileUpload';
+import { ClassEditor } from './ClassEditor';
+import { InstructorAvailability } from './InstructorAvailability';
 import { ScheduleViewer } from './ScheduleViewer';
 import { ScheduleDebugPanel } from './ScheduleDebugPanel';
 import { SolverConfig } from './SolverConfig';
@@ -61,6 +63,14 @@ export const TabContainer: React.FC = () => {
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-lg font-medium mb-4">Data Upload</h2>
               <FileUpload />
+            </div>
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-lg font-medium mb-4">Class Editor</h2>
+              <ClassEditor />
+            </div>
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-lg font-medium mb-4">Instructor Availability</h2>
+              <InstructorAvailability />
             </div>
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-lg font-medium mb-4">Solver Configuration</h2>
